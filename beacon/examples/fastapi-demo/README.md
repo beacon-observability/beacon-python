@@ -1,6 +1,6 @@
 # Beacon Python FastAPI Demo
 
-This demo uses `beacon-otel 1.0.0` to validate:
+This demo uses `beacon-otel 1.0.1` to validate:
 
 - FastAPI server auto-instrumentation;
 - `requests` client auto-instrumentation;
@@ -20,7 +20,7 @@ python -m pip install -r requirements.txt
 beacon --version
 ```
 
-The output should be `Beacon Python 1.0.0`.
+The output should be `Beacon Python 1.0.1`.
 
 ## Connecting to DataKit
 

@@ -23,7 +23,7 @@ The GitHub `pypi` and `pypi-profiling` environments have been created, restricte
 
 Before a stable release, define and validate the following in this repository:
 
-1. Confirm the functional boundaries and stable versions of `beacon-otel` and `beacon-profiling`, along with migration guidance for legacy Guance packages. The stable `0.1.0` release is based on the accepted `0.1.0rc2` functional baseline. The legacy `guance-sdk-extension-profiling` package cannot coexist with Beacon Profiling, and existing artifacts must not be overwritten under legacy Guance package names and versions.
+1. Confirm the functional boundaries and stable versions of `beacon-otel` and `beacon-profiling`, along with any migration guidance for legacy packages. The stable `0.1.0` release is based on the accepted `0.1.0rc2` functional baseline. Conflicting profiling distributions cannot coexist with Beacon Profiling, and existing artifacts from other projects must not be overwritten.
 2. Pin the Contrib, Python Core, third-party dependency, and license sources. Build candidate artifacts from the pinned commit and record their digests.
 3. Record validation results for first-party functionality, upstream impact, Python runtime environments, DataKit backends, upgrades, and rollbacks. Bind the evidence to the same commit and artifacts.
 4. Define release permissions, the target repository or package index, release approval, and rollback procedures. Do not enable inherited OpenTelemetry release workflows to publish Beacon.

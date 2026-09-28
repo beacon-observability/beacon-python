@@ -15,15 +15,9 @@ git config --replace-all remote.upstream.fetch '+refs/heads/main:refs/remotes/up
 git config remote.pushDefault origin
 ```
 
-If a remote already exists, verify its URL and do not overwrite it. `legacy` is used only to trace the old `gtrace` branch and is not a source for future releases:
+If a remote already exists, verify its URL and do not overwrite it. The initial-import source is recorded in [upstream.lock.json](upstream.lock.json) for provenance and is not a source for future releases.
 
-```bash
-git remote add legacy https://github.com/GuanceCloud/opentelemetry-python-contrib.git
-git config remote.legacy.tagOpt --no-tags
-git config --replace-all remote.legacy.fetch '+refs/heads/gtrace:refs/remotes/legacy/gtrace'
-```
-
-Remotes, refspecs, and remote-tracking references are local configuration and are not included in Git commits. Creating a remote repository or pushing for the first time requires separate authorization. Do not push to the official `upstream` or the legacy `legacy` remote.
+Remotes, refspecs, and remote-tracking references are local configuration and are not included in Git commits. Creating a remote repository or pushing for the first time requires separate authorization. Do not push to the official `upstream` remote.
 
 ## Pinning and Merging an Official Baseline
 

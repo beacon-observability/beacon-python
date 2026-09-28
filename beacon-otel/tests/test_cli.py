@@ -74,5 +74,5 @@ def test_legacy_profiling_conflict_is_actionable() -> None:
         patch("beacon_otel.cli.distribution") as legacy_distribution,
     ):
         legacy_distribution.return_value = object()
-        with pytest.raises(SystemExit, match="guance-sdk-extension-profiling"):
+        with pytest.raises(SystemExit, match="conflicting legacy profiling"):
             main()

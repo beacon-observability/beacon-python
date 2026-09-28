@@ -10,7 +10,7 @@ readme = "README.rst"
 license = "Apache-2.0"
 requires-python = ">=3.10"
 authors = [
-  { name = "GuanceCloud" },
+  { name = "Beacon Observability" },
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
