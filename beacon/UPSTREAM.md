@@ -6,7 +6,7 @@ Beacon 下游的主 CI 入口是 [ci.yml](../.github/workflows/ci.yml)，只验�
 
 ## Remote 配置
 
-克隆未来的 Beacon 仓库后，先确认 `origin` 指向 `https://github.com/GuanceCloud/beacon-python.git`。不存在 `upstream` 时添加：
+克隆 Beacon 仓库后，先确认 `origin` 指向 `https://github.com/beacon-observability/beacon-python.git`。不存在 `upstream` 时添加：
 
 ```bash
 git remote add upstream https://github.com/open-telemetry/opentelemetry-python-contrib.git

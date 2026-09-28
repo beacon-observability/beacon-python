@@ -29,7 +29,7 @@ Beacon Python 是 GuanceCloud 基于完整 OpenTelemetry Python Contrib 源码�
 
 ## 产品与上游
 
-- [Beacon 产品入口](https://github.com/GuanceCloud/beacon)
+- [Beacon 产品入口](https://github.com/beacon-observability/beacon)
 - [OpenTelemetry Python Contrib](https://github.com/open-telemetry/opentelemetry-python-contrib)
 - [导入时的 Guance 自有实现](https://github.com/GuanceCloud/opentelemetry-python-contrib/tree/40b90737969d7dfd48a732a93a3a3734f55bff27)
 
