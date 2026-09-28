@@ -47,7 +47,7 @@ class VersionCheckTest(unittest.TestCase):
             for line in version_file.read_text(encoding="utf-8").splitlines()
             if line.startswith("version=")
         )
-        result = self.run_check("--tag", f"beacon-v{version}")
+        result = self.run_check("--tag", f"v{version}")
         if ".dev" in version:
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("Only RC and final Beacon versions", result.stderr)

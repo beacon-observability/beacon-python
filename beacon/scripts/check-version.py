@@ -236,7 +236,7 @@ def main() -> None:
             "Only RC and final Beacon versions may be published",
         )
         require(
-            args.tag == f"beacon-v{version}",
+            args.tag == f"v{version}",
             f"Tag {args.tag} does not match Beacon Python {version}",
         )
     expected = package_version_source(version)
