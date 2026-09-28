@@ -1,7 +1,7 @@
 Beacon Profiling for Python
 ===========================
 
-The current stable version is ``beacon-profiling==0.1.0``.
+The current stable version is ``beacon-profiling==1.0.0``.
 The previously published Guance profiling package is a separate legacy
 release; see ``../../beacon/README.md`` in this repository for status.
 

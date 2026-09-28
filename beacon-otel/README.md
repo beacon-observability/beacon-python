@@ -1,17 +1,17 @@
 # Beacon Python
 
-`beacon-otel` is the main Beacon Python installation package. The current stable version is `0.1.0`.
+`beacon-otel` is the main Beacon Python installation package. The current stable version is `1.0.0`.
 
 Install the main package together with the auto-instrumentation plugins required by your framework. For example, a FastAPI application can install the current stable version with:
 
 ```bash
-pip install 'beacon-otel[fastapi]==0.1.0'
+pip install 'beacon-otel[fastapi]==1.0.0'
 ```
 
 To enable profiling, install:
 
 ```bash
-pip install 'beacon-otel[fastapi,profiling]==0.1.0'
+pip install 'beacon-otel[fastapi,profiling]==1.0.0'
 ```
 
 Activate the virtual environment where Beacon is installed, configure the OTLP endpoint, and then start the application. You can also pass the full path of an executable in that virtual environment after `beacon`:
