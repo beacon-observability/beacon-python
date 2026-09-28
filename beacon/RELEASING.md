@@ -1,6 +1,6 @@
 # Beacon Python 发行流程
 
-`beacon-otel` 主包与 `beacon-profiling` 可选包按同一产品版本发行。继承的上游及历史上的 `gtrace` 包安装示例不是 Beacon 的发行证据；[产品入口](https://github.com/GuanceCloud/beacon)以实际发布标签为准。
+`beacon-otel` 主包与 `beacon-profiling` 可选包按同一产品版本发行。继承的上游及历史上的 `gtrace` 包安装示例不是 Beacon 的发行证据；[产品入口](https://github.com/beacon-observability/beacon)以实际发布标签为准。
 
 对外产品名称统一为 Beacon Python，命令入口使用 `beacon`，不恢复或发布 `gtrace` 命令。发行包名为 `beacon-otel` 与 `beacon-profiling`。旧 `gtrace` 名称只用于历史分支和来源追溯；公共 PyPI 上的 [`beacon`](https://pypi.org/project/beacon/) 和 [`beacon-python`](https://pypi.org/project/beacon-python/) 已属于其他项目，不能直接用作本项目发行包名。
 

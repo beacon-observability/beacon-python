@@ -47,8 +47,8 @@ beacon = "beacon_otel.distro:BeaconDistro"
 beacon = "beacon_otel.distro:BeaconConfigurator"
 
 [project.urls]
-Homepage = "https://github.com/GuanceCloud/beacon-python/tree/main/beacon-otel"
-Repository = "https://github.com/GuanceCloud/beacon-python"
+Homepage = "https://github.com/beacon-observability/beacon-python/tree/main/beacon-otel"
+Repository = "https://github.com/beacon-observability/beacon-python"
 
 [tool.hatch.version]
 path = "src/beacon_otel/version.py"
