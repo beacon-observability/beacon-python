@@ -1,17 +1,17 @@
 # Beacon Python FastAPI Demo
 
-这个 Demo 使用 `beacon-otel 0.1.0`，用于验证：
+This demo uses `beacon-otel 0.1.0` to validate:
 
-- FastAPI 服务端自动插桩；
-- `requests` 客户端自动插桩；
-- Trace 与 Profile 的上下文关联；
-- CPU 栈采样，并为内存、线程锁竞争和已处理异常采样制造可控负载。
+- FastAPI server auto-instrumentation;
+- `requests` client auto-instrumentation;
+- trace and profile context correlation;
+- CPU stack sampling, with controlled workloads for memory, lock contention, and handled-exception sampling.
 
-`/work` 会调用本服务的 `/health`，因此一次请求会产生服务端和客户端 Span，并制造一段有界的 Profiling 负载。
+`/work` calls the service's own `/health` endpoint, so one request produces both server and client spans and generates a bounded profiling workload.
 
-## 安装
+## Installation
 
-在本目录执行：
+Run the following commands in this directory:
 
 ```bash
 python -m venv .venv
@@ -20,11 +20,11 @@ python -m pip install -r requirements.txt
 beacon --version
 ```
 
-应输出 `Beacon Python 0.1.0`。
+The output should be `Beacon Python 0.1.0`.
 
-## 连接 DataKit
+## Connecting to DataKit
 
-下面以本机 DataKit 的 OTLP/gRPC Trace 接口 `127.0.0.1:4317` 和 pprof 接口 `127.0.0.1:9529` 为例：
+The following example uses a local DataKit OTLP/gRPC trace endpoint at `127.0.0.1:4317` and a pprof endpoint at `127.0.0.1:9529`:
 
 ```bash
 export OTEL_SERVICE_NAME=beacon-python-demo
@@ -36,29 +36,29 @@ export OTEL_PROFILING_ENABLED=true
 export OTEL_PROFILING_PPROF_UPLOAD_URL=http://127.0.0.1:9529/profiling/v1/input
 ```
 
-Profile 默认每 60 秒聚合并导出一次；需要缩短或延长时，可以设置
-`OTEL_PROFILING_EXPORT_INTERVAL`。
+Profiles are aggregated and exported every 60 seconds by default. Set
+`OTEL_PROFILING_EXPORT_INTERVAL` to shorten or extend the interval.
 
-先用默认的 CPU 栈采样完成基础验收。需要专项验证其他采集器时，再分别开启：
+Start with the default CPU stack sampling for basic acceptance. Enable the other collectors individually when validating them:
 
 ```bash
 export OTEL_PROFILING_LOCK_ENABLED=true
 export OTEL_PROFILING_MEMORY_ENABLED=true
 
-# 已处理异常采集要求 Python 3.12 及以上。
+# Handled-exception collection requires Python 3.12 or later.
 export OTEL_PROFILING_EXCEPTION_ENABLED=true
 ```
 
-内存采集周期默认跟随 Profile 导出周期，也可以通过
-`OTEL_PROFILING_MEMORY_INTERVAL` 单独调整。
+The memory collection interval follows the profile export interval by default. It can also be adjusted independently with
+`OTEL_PROFILING_MEMORY_INTERVAL`.
 
-启动应用：
+Start the application:
 
 ```bash
 beacon uvicorn app:app --host 127.0.0.1 --port 8000
 ```
 
-在另一个终端产生负载：
+Generate load in another terminal:
 
 ```bash
 for index in $(seq 1 20); do
@@ -67,11 +67,11 @@ for index in $(seq 1 20); do
 done
 ```
 
-等待至少一个导出周期后，在观测端按服务名 `beacon-python-demo` 查询。`/work` 响应中的 `trace_id` 和 `span_id` 可用于定位对应 Trace。
+After waiting for at least one export interval, query the observability backend for the service name `beacon-python-demo`. Use the `trace_id` and `span_id` in the `/work` response to locate the corresponding trace.
 
-## 不连接接收端的本地冒烟
+## Local Smoke Test Without a Backend
 
-可以把 Trace 输出到终端，并将 Profile 写成本地 pprof 文件：
+You can write traces to the terminal and profiles to local pprof files:
 
 ```bash
 export OTEL_SERVICE_NAME=beacon-python-demo
@@ -87,4 +87,4 @@ export OTEL_PROFILING_INCLUDE_TRACE_CONTEXT=false
 beacon uvicorn app:app --host 127.0.0.1 --port 8000
 ```
 
-请求 `/work` 后，终端应出现 FastAPI 和 `requests` Span，`otel-profiles/` 下应生成 `.pprof` 文件。本地 pprof 编码器无法表示部分无符号 Trace/Span ID，因此这个仅验证本地文件输出的模式关闭了 Profile 中的 Trace 上下文；DataKit 的 pprof 上传路径不需要该规避配置。
+After requesting `/work`, FastAPI and `requests` spans should appear in the terminal and `.pprof` files should be created under `otel-profiles/`. The local pprof encoder cannot represent some unsigned trace and span IDs, so this local-file-only validation mode disables trace context in profiles. The DataKit pprof upload path does not require this workaround.

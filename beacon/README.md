@@ -1,23 +1,23 @@
-# Beacon Python 开发入口
+# Beacon Python Development Guide
 
-本仓库以独立仓库方式维护完整的 [OpenTelemetry Python Contrib](https://github.com/open-telemetry/opentelemetry-python-contrib) 源码和历史，不是 GitHub Fork。产品总入口是 [beacon-observability/beacon](https://github.com/beacon-observability/beacon)。当前稳定版本为 `0.1.0`；支持范围以对应版本的发行说明和验收记录为准。
+This standalone repository maintains the complete [OpenTelemetry Python Contrib](https://github.com/open-telemetry/opentelemetry-python-contrib) source and history; it is not a GitHub fork. The main product repository is [beacon-observability/beacon](https://github.com/beacon-observability/beacon). The current stable version is `0.1.0`; refer to the corresponding release notes and acceptance records for its supported scope.
 
-开发主线为 `main`。首次导入保留了旧 [GuanceCloud/opentelemetry-python-contrib](https://github.com/GuanceCloud/opentelemetry-python-contrib/tree/gtrace) 的 `gtrace` 提交历史，并合入官方 `v0.65b0` 发布标签。Beacon Python 开发版本以[版本文件](version.properties)为唯一手工修改入口；Contrib `v0.65b0` 与配套 Core `v1.44.0` 的 tag 和完整提交均见[基线记录](upstream.lock.json)。Core 实际开发依赖仍以根目录 [pyproject.toml](../pyproject.toml) 和 [uv.lock](../uv.lock) 为准，并由版本检查脚本核对。后续升级流程见[上游同步](UPSTREAM.md)。
+The primary development branch is `main`. The initial import preserved the `gtrace` commit history from the legacy [GuanceCloud/opentelemetry-python-contrib](https://github.com/GuanceCloud/opentelemetry-python-contrib/tree/gtrace) repository and merged the official `v0.65b0` release tag. The [version file](version.properties) is the only manually maintained source for the Beacon Python development version. The tags and full commits for Contrib `v0.65b0` and the corresponding Core `v1.44.0` are recorded in the [baseline record](upstream.lock.json). Actual Core development dependencies remain defined by the root [pyproject.toml](../pyproject.toml) and [uv.lock](../uv.lock) and are verified by the version-check script. See [upstream synchronization](UPSTREAM.md) for future upgrades.
 
-## 代码与验证入口
+## Code and Validation Resources
 
-| 内容 | 位置 |
+| Item | Location |
 | --- | --- |
-| Beacon 主安装包及 `beacon` 命令 | [beacon-otel](../beacon-otel/) |
-| 上游自动插桩发行包 | [opentelemetry-distro](../opentelemetry-distro/) |
-| 自有 Profiling 扩展 | [beacon-profiling](../sdk-extension/beacon-profiling/) |
-| 上游自动插桩及测试 | [instrumentation](../instrumentation/) |
-| 构建与贡献约定 | [CONTRIBUTING.md](../CONTRIBUTING.md) |
-| Beacon 版本与上游基线检查 | [check-version.py](scripts/check-version.py) |
+| Main Beacon installation package and `beacon` command | [beacon-otel](../beacon-otel/) |
+| Upstream auto-instrumentation distribution | [opentelemetry-distro](../opentelemetry-distro/) |
+| First-party profiling extension | [beacon-profiling](../sdk-extension/beacon-profiling/) |
+| Upstream auto-instrumentation and tests | [instrumentation](../instrumentation/) |
+| Build and contribution guidelines | [CONTRIBUTING.md](../CONTRIBUTING.md) |
+| Beacon version and upstream baseline checks | [check-version.py](scripts/check-version.py) |
 | FastAPI Demo | [examples/fastapi-demo](examples/fastapi-demo/) |
-| 发行准备项 | [RELEASING.md](RELEASING.md) |
+| Release preparation | [RELEASING.md](RELEASING.md) |
 
-从仓库根目录执行以下开发验证；运行完整上游矩阵仍需按[贡献指南](../CONTRIBUTING.md)准备环境：
+Run the following development checks from the repository root. The full upstream matrix still requires an environment prepared according to the [contributing guide](../CONTRIBUTING.md):
 
 ```bash
 python beacon/scripts/check-version.py
@@ -27,4 +27,4 @@ uvx --from uv==0.12.1 uv run --frozen --package beacon-otel --with pytest pytest
 uvx --from uv==0.12.1 uv run --frozen --package beacon-profiling --with pytest pytest -q sdk-extension/beacon-profiling/tests
 ```
 
-目前已实现 `beacon-otel`、`beacon` 命令与 `beacon-profiling`。`0.1.0` 正式版沿用已完成公开制品安装、FastAPI Demo、DataKit Trace 与 pprof 入库验收的 `0.1.0rc2` 功能基线，并补充正式制品构建、安装和回归验证；Profile 默认导出周期为可配置的 60 秒。验收记录见 [`validation/0.1.0.md`](validation/0.1.0.md)，候选版接收端证据见 [`validation/0.1.0rc2.md`](validation/0.1.0rc2.md)。旧 `gtrace` 发行包已从本仓库移除；既有 PyPI Guance 包不属于 Beacon 发行，不得以同名同版本覆盖既有制品。不应把继承的上游或旧仓库发布流程当作 Beacon 发行入口。
+The repository currently provides `beacon-otel`, the `beacon` command, and `beacon-profiling`. The `0.1.0` release uses the validated `0.1.0rc2` functional baseline, which passed public artifact installation, FastAPI demo, DataKit trace ingestion, and pprof ingestion acceptance, with additional release-artifact build, installation, and regression validation. The default profile export interval is configurable and set to 60 seconds. See [`validation/0.1.0.md`](validation/0.1.0.md) for the acceptance record and [`validation/0.1.0rc2.md`](validation/0.1.0rc2.md) for release-candidate backend evidence. The legacy `gtrace` distribution has been removed from this repository. Existing Guance packages on PyPI are not Beacon releases and must not be overwritten with artifacts that reuse their names and versions. Inherited upstream or legacy-repository release workflows must not be treated as Beacon release entry points.
