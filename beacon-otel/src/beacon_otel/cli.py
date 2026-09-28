@@ -33,9 +33,9 @@ def main() -> None:
         pass
     else:
         raise SystemExit(
-            "Beacon Python cannot run alongside the legacy "
-            "guance-sdk-extension-profiling package. Remove that package "
-            "from this environment before launching with beacon."
+            "Beacon Python cannot run alongside a conflicting legacy "
+            "profiling package. Remove that package from this environment "
+            "before launching with beacon."
         )
 
     os.environ.setdefault("OTEL_PYTHON_DISTRO", "beacon")

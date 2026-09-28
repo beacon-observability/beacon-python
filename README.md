@@ -1,8 +1,8 @@
 # Beacon Python
 
-Beacon Python is a Python auto-instrumentation and enhancement project maintained by GuanceCloud from the complete OpenTelemetry Python Contrib source. It preserves upstream history and is developed and released independently for each language.
+Beacon Python is a Python auto-instrumentation and enhancement project based on the complete OpenTelemetry Python Contrib source. It preserves upstream history and is developed and released independently for each language.
 
-The current stable version is `1.0.0`, published on PyPI as [`beacon-otel`](https://pypi.org/project/beacon-otel/) and [`beacon-profiling`](https://pypi.org/project/beacon-profiling/). Download links and support statements for upstream OpenTelemetry packages and existing Guance PyPI packages do not represent Beacon Python release status.
+The current stable version is `1.0.1`, published on PyPI as [`beacon-otel`](https://pypi.org/project/beacon-otel/) and [`beacon-profiling`](https://pypi.org/project/beacon-profiling/). Download links and support statements for upstream OpenTelemetry packages do not represent Beacon Python release status.
 
 ## Development Resources
 
@@ -31,6 +31,5 @@ The primary development branch is `main`. Run `uvx --from uv==0.12.1 uv lock --c
 
 - [Beacon product home](https://github.com/beacon-observability/beacon)
 - [OpenTelemetry Python Contrib](https://github.com/open-telemetry/opentelemetry-python-contrib)
-- [Guance implementation at import time](https://github.com/GuanceCloud/opentelemetry-python-contrib/tree/40b90737969d7dfd48a732a93a3a3734f55bff27)
 
-The upstream source layout, package names, and [license](LICENSE) are preserved. `beacon-otel` and `beacon-profiling` are released as independent packages and do not overwrite published artifacts under existing Guance package versions.
+The upstream source layout, package names, and [license](LICENSE) are preserved. `beacon-otel` and `beacon-profiling` are released as independent packages and do not overwrite artifacts published by other projects.

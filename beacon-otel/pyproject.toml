@@ -10,7 +10,7 @@ readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.10"
 authors = [
-  { name = "GuanceCloud" },
+  { name = "Beacon Observability" },
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
@@ -32,7 +32,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-profiling = ["beacon-profiling == 1.0.0"]
+profiling = ["beacon-profiling == 1.0.1"]
 requests = ["opentelemetry-instrumentation-requests == 0.65b0"]
 flask = ["opentelemetry-instrumentation-flask == 0.65b0"]
 fastapi = ["opentelemetry-instrumentation-fastapi == 0.65b0"]
