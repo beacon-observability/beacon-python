@@ -1,20 +1,20 @@
 # Beacon Python
 
-`beacon-otel` 是 Beacon Python 的主安装包。当前稳定版本为 `0.1.0`。
+`beacon-otel` is the main Beacon Python installation package. The current stable version is `0.1.0`.
 
-安装主包和所需框架的自动插桩插件。例如，FastAPI 应用可安装当前稳定版本：
+Install the main package together with the auto-instrumentation plugins required by your framework. For example, a FastAPI application can install the current stable version with:
 
 ```bash
 pip install 'beacon-otel[fastapi]==0.1.0'
 ```
 
-需要 Profiling 时安装：
+To enable profiling, install:
 
 ```bash
 pip install 'beacon-otel[fastapi,profiling]==0.1.0'
 ```
 
-先激活安装 Beacon 的虚拟环境，再配置 OTLP 接收端并启动应用；也可以在 `beacon` 后传入该虚拟环境内可执行文件的完整路径：
+Activate the virtual environment where Beacon is installed, configure the OTLP endpoint, and then start the application. You can also pass the full path of an executable in that virtual environment after `beacon`:
 
 ```bash
 export OTEL_SERVICE_NAME=my-service
@@ -22,8 +22,8 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 beacon uvicorn myapp:app
 ```
 
-`beacon --version` 显示 Beacon Python 产品版本。当前提供 `requests`、`flask`、`fastapi` 可选依赖；其他框架的自动插桩包可根据 OpenTelemetry 官方说明单独安装。安装包存在不代表所有框架和运行环境已获 Beacon 稳定版支持；支持范围以对应版本的发行说明和验收记录为准。
+`beacon --version` displays the Beacon Python product version. Optional dependencies are currently provided for `requests`, `flask`, and `fastapi`; auto-instrumentation packages for other frameworks can be installed separately according to the official OpenTelemetry documentation. Package availability does not mean that every framework and runtime environment is supported by a stable Beacon release. Refer to the release notes and acceptance records for the supported scope of each version.
 
-可选依赖仅安装对应的自动插桩插件；应用框架本身仍由应用自行安装。不要在同一 Python 环境中混装旧版 `guance-sdk-extension-profiling`，其自动插桩入口会与 `beacon-profiling` 冲突。
+Optional dependencies install only the corresponding auto-instrumentation plugins; the application must install the framework itself. Do not install the legacy `guance-sdk-extension-profiling` package in the same Python environment because its auto-instrumentation entry point conflicts with `beacon-profiling`.
 
-`beacon` 默认选择 Beacon 的 OpenTelemetry distro/configurator，并沿用标准 `OTEL_*` 环境变量。用户显式设置的 `OTEL_PYTHON_DISTRO` 或 `OTEL_PYTHON_CONFIGURATOR` 不会被覆盖。Profiling 默认关闭，启用方式见[Profiling 文档](../sdk-extension/beacon-profiling/README.rst)。
+By default, `beacon` selects the Beacon OpenTelemetry distro and configurator and uses the standard `OTEL_*` environment variables. Explicitly configured `OTEL_PYTHON_DISTRO` or `OTEL_PYTHON_CONFIGURATOR` values are not overwritten. Profiling is disabled by default; see the [profiling documentation](../sdk-extension/beacon-profiling/README.rst) to enable it.
