@@ -1,13 +1,16 @@
 import os
 import uuid
 from pathlib import Path
+from typing import Any
 
 
-def post_fork(server, worker):
+def post_fork(server: Any, worker: Any) -> None:
     if server.cfg.preload_app:
         raise RuntimeError(
             "Beacon Security requires Gunicorn preload_app=False"
         )
+    os.environ.setdefault("OTEL_PYTHON_DISTRO", "beacon")
+    os.environ.setdefault("OTEL_PYTHON_CONFIGURATOR", "beacon")
     worker_directory = f"worker-{os.getpid()}-{uuid.uuid4().hex[:8]}"
     root = Path(
         os.environ.get("BEACON_SECURITY_OUTPUT", "beacon-security-output")

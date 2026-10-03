@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import os
 import threading
+from pathlib import Path
 from types import SimpleNamespace
 
 
@@ -218,3 +220,26 @@ def test_uninstrument_preserves_preexisting_threading(
             instrumentor.uninstrument()
         if threading_instrumentor.is_instrumented_by_opentelemetry:
             threading_instrumentor.uninstrument()
+
+
+def test_gunicorn_post_fork_selects_beacon_defaults(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.delenv("OTEL_PYTHON_DISTRO", raising=False)
+    monkeypatch.delenv("OTEL_PYTHON_CONFIGURATOR", raising=False)
+    monkeypatch.setenv("BEACON_SECURITY_OUTPUT", str(tmp_path))
+    initialized: list[bool] = []
+    monkeypatch.setattr(
+        "opentelemetry.instrumentation.auto_instrumentation.initialize",
+        lambda: initialized.append(True),
+    )
+
+    from beacon_security.gunicorn import post_fork
+
+    server = SimpleNamespace(cfg=SimpleNamespace(preload_app=False))
+    post_fork(server, object())
+
+    assert initialized == [True]
+    assert os.environ["OTEL_PYTHON_DISTRO"] == "beacon"
+    assert os.environ["OTEL_PYTHON_CONFIGURATOR"] == "beacon"
+    assert Path(os.environ["BEACON_SECURITY_OUTPUT"]).parent == tmp_path
