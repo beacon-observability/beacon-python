@@ -1,0 +1,1 @@
+`beacon-otel`: add opt-in Beacon Security runtime observation and runtime SBOM support, embedded in the main distribution and disabled by default.

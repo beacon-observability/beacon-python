@@ -15,6 +15,8 @@ def test_beacon_otel_distribution_identity() -> None:
         ("console_scripts", "beacon"),
         ("opentelemetry_distro", "beacon"),
         ("opentelemetry_configurator", "beacon"),
+        ("opentelemetry_instrumentor", "beacon_security"),
+        ("opentelemetry_pre_instrument", "beacon_security"),
     ):
         assert any(
             entry_point.group == group and entry_point.name == name

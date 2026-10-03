@@ -2,6 +2,7 @@
 """Keep Beacon package versions and the adopted OTel baseline in sync."""
 
 import argparse
+import hashlib
 import json
 import re
 from email.parser import BytesParser
@@ -17,6 +18,20 @@ PACKAGE_VERSION_FILES = (
     ROOT / "beacon-otel/src/beacon_otel/version.py",
 )
 BEACON_OTEL_PYPROJECT = ROOT / "beacon-otel/pyproject.toml"
+SECURITY_MIGRATION_FILE = ROOT / "beacon/security-migration.lock.json"
+SECURITY_PROPERTIES_FILE = (
+    ROOT / "beacon-otel/src/beacon_security/security-spec.properties"
+)
+SECURITY_FIXTURES = {
+    "schemaSha256": (
+        ROOT
+        / "beacon-otel/tests/security/fixtures/spec"
+        / "beacon-security-event-v1.schema.json"
+    ),
+    "fingerprintSha256": (
+        ROOT / "beacon-otel/tests/security/fixtures/spec/fingerprint-v1.json"
+    ),
+}
 WHEEL_NAMES = {"beacon-otel", "beacon-profiling"}
 VERSION_PATTERN = re.compile(
     r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
@@ -147,7 +162,7 @@ def check_baseline() -> tuple[str, str]:
             f'"{requirement}"' in beacon_otel,
             f"beacon-otel dependency differs from baseline: {requirement}",
         )
-    for package in ("requests", "flask", "fastapi"):
+    for package in ("requests", "flask", "fastapi", "django"):
         requirement = (
             f"opentelemetry-instrumentation-{package} == {contrib_version}"
         )
@@ -155,7 +170,70 @@ def check_baseline() -> tuple[str, str]:
             f'"{requirement}"' in beacon_otel,
             f"beacon-otel extra differs from baseline: {requirement}",
         )
+    threading_requirement = (
+        f"opentelemetry-instrumentation-threading == {contrib_version}"
+    )
+    require(
+        f'"{threading_requirement}"' in beacon_otel,
+        "beacon-otel Security threading dependency differs from baseline",
+    )
     return contrib_version, core_version
+
+
+def check_security_provenance() -> None:
+    migration = json.loads(SECURITY_MIGRATION_FILE.read_text(encoding="utf-8"))
+    source = migration["source"]
+    contract = migration["contract"]
+    require(
+        migration["schemaVersion"] == 1, "Invalid Security migration schema"
+    )
+    require(
+        source["repository"]
+        == "https://github.com/GuanceCloud/SecurityContext.git",
+        "Unexpected Security migration source repository",
+    )
+    require(source["subdirectory"] == "python", "Invalid Security source path")
+    require(
+        re.fullmatch(r"[0-9a-f]{40}", source["commit"]) is not None,
+        "Invalid Security migration source commit",
+    )
+    require(
+        contract["repository"]
+        == "https://github.com/beacon-observability/beacon-security-spec",
+        "Unexpected Security contract repository",
+    )
+    require(
+        re.fullmatch(r"[0-9a-f]{40}", contract["commit"]) is not None,
+        "Invalid Security contract commit",
+    )
+    require(
+        contract["schemaVersion"] == contract["fingerprintVersion"] == 1,
+        "Beacon Security must use schema and fingerprint version 1",
+    )
+
+    properties = dict(
+        line.split("=", 1)
+        for line in SECURITY_PROPERTIES_FILE.read_text(
+            encoding="utf-8"
+        ).splitlines()
+        if line and not line.startswith("#")
+    )
+    require(
+        properties
+        == {
+            "repository": contract["repository"],
+            "revision": contract["commit"],
+            "schemaVersion": str(contract["schemaVersion"]),
+            "fingerprintVersion": str(contract["fingerprintVersion"]),
+        },
+        "Packaged Security contract pin differs from migration lock",
+    )
+    for field, path in SECURITY_FIXTURES.items():
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        require(
+            digest == contract[field],
+            f"Security fixture differs from pinned contract: {path}",
+        )
 
 
 def check_wheel(path: Path, version: str, baseline: tuple[str, str]) -> None:
@@ -171,6 +249,7 @@ def check_wheel(path: Path, version: str, baseline: tuple[str, str]) -> None:
             f"Expected exactly one wheel METADATA file: {path}",
         )
         metadata = BytesParser().parsebytes(archive.read(metadata_files[0]))
+        wheel_files = set(archive.namelist())
     name = metadata["Name"]
     require(name in WHEEL_NAMES, f"Unexpected wheel package: {name}")
     require(
@@ -207,6 +286,47 @@ def check_wheel(path: Path, version: str, baseline: tuple[str, str]) -> None:
             ),
             f"Wheel profiling extra differs from Beacon Python {version}",
         )
+        require(
+            any(
+                re.fullmatch(
+                    r"opentelemetry-instrumentation-threading\s*==\s*"
+                    + re.escape(baseline[0]),
+                    item,
+                )
+                for item in requirements
+            ),
+            "Wheel Security threading dependency differs from Contrib baseline",
+        )
+        for packaged in (
+            "beacon_security/__init__.py",
+            "beacon_security/security-spec.properties",
+        ):
+            require(packaged in wheel_files, f"Wheel is missing {packaged}")
+        require(
+            "beacon_security/cli.py" not in wheel_files,
+            "Wheel must not publish the migration-only Security CLI",
+        )
+        entry_point_files = [
+            item
+            for item in wheel_files
+            if item.endswith(".dist-info/entry_points.txt")
+        ]
+        require(
+            len(entry_point_files) == 1,
+            "Expected one wheel entry_points.txt",
+        )
+        with ZipFile(path) as archive:
+            entry_points = archive.read(entry_point_files[0]).decode("utf-8")
+        for expected in (
+            "[opentelemetry_instrumentor]",
+            "beacon_security = beacon_security:SecurityInstrumentor",
+            "[opentelemetry_pre_instrument]",
+            "beacon_security = beacon_security:bootstrap",
+        ):
+            require(
+                expected in entry_points,
+                f"Wheel is missing Security entry point: {expected}",
+            )
 
 
 def main() -> None:
@@ -266,6 +386,7 @@ def main() -> None:
         "beacon-otel profiling extra is stale; run check-version.py --sync",
     )
     baseline = check_baseline()
+    check_security_provenance()
     for wheel in args.wheel or []:
         check_wheel(wheel, version, baseline)
     print(

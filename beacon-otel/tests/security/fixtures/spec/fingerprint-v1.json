@@ -1,0 +1,91 @@
+{
+  "fingerprint_version": 1,
+  "vectors": [
+    {
+      "name": "java SQL sink with sorted source signatures",
+      "input": {
+        "application_id": "app-dc6b8b0dc435531262eedacdf8fe51bd619964caa0e12bb4c29477448fdda8ae",
+        "language": "java",
+        "rule": "sql_injection",
+        "sink": {
+          "function": "java.sql.Statement.executeQuery",
+          "role": "sql_template",
+          "location": "example.Orders#find(Orders.java:42)",
+          "operation": "",
+          "path_role": "",
+          "input_part": ""
+        },
+        "source_signatures": [
+          "http.request.parameter|customer",
+          "http.request.header|x-tenant",
+          "http.request.parameter|customer"
+        ]
+      },
+      "expected": "finding-555321b3086c32e527cfd1f07854e1c8a81c848704d399c3124865fb4e734180"
+    },
+    {
+      "name": "javascript SQL sink with sorted source signatures",
+      "input": {
+        "application_id": "app-dc6b8b0dc435531262eedacdf8fe51bd619964caa0e12bb4c29477448fdda8ae",
+        "language": "javascript",
+        "rule": "sql_injection",
+        "sink": {
+          "function": "mysql2.Connection.query",
+          "role": "sql_template",
+          "location": "file:///srv/orders.js:42:9",
+          "operation": "",
+          "path_role": "",
+          "input_part": ""
+        },
+        "source_signatures": [
+          "http.request.parameter|customer",
+          "http.request.header|x-tenant",
+          "http.request.parameter|customer"
+        ]
+      },
+      "expected": "finding-47c22e092ee1c063fbbfb0910199fd11317c9fe7b787423de9c5b5bdbade3ebd"
+    },
+    {
+      "name": "python SQL sink with sorted source signatures",
+      "input": {
+        "application_id": "app-dc6b8b0dc435531262eedacdf8fe51bd619964caa0e12bb4c29477448fdda8ae",
+        "language": "python",
+        "rule": "sql_injection",
+        "sink": {
+          "function": "sqlite3.Cursor.execute",
+          "role": "sql_template",
+          "location": "/srv/orders.py:42",
+          "operation": "",
+          "path_role": "",
+          "input_part": ""
+        },
+        "source_signatures": [
+          "http.request.parameter|customer",
+          "http.request.header|x-tenant",
+          "http.request.parameter|customer"
+        ]
+      },
+      "expected": "finding-334909797af9ebbd9c30afbd7fc7cce3f1d07764c95fabc1f5da8e67fcb41b8f"
+    },
+    {
+      "name": "javascript replaces unpaired Unicode surrogates",
+      "input": {
+        "application_id": "app-dc6b8b0dc435531262eedacdf8fe51bd619964caa0e12bb4c29477448fdda8ae",
+        "language": "javascript",
+        "rule": "path_traversal",
+        "sink": {
+          "function": "node:fs.readFile",
+          "role": "file_path",
+          "location": "file:///srv/files.js:\ud800",
+          "operation": "read",
+          "path_role": "source",
+          "input_part": ""
+        },
+        "source_signatures": [
+          "http.request.parameter|\udc00path"
+        ]
+      },
+      "expected": "finding-54f1f003580eb93a4404e8387fd26ecf4d65b2f999556f83d2453365e40c0951"
+    }
+  ]
+}

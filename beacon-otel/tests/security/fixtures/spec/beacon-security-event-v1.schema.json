@@ -1,0 +1,270 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/beacon-observability/beacon-security-spec/raw/main/schemas/beacon-security-event-v1.schema.json",
+  "title": "Beacon Security event schema v1",
+  "oneOf": [
+    { "$ref": "#/$defs/finding" },
+    { "$ref": "#/$defs/sbomSnapshot" },
+    { "$ref": "#/$defs/collectionIncomplete" },
+    { "$ref": "#/$defs/diagnostic" },
+    { "$ref": "#/$defs/minimalTruncation" }
+  ],
+  "$defs": {
+    "hex32": { "type": "string", "pattern": "^(|[0-9a-f]{32})$" },
+    "hex16": { "type": "string", "pattern": "^(|[0-9a-f]{16})$" },
+    "identity": {
+      "type": "object",
+      "required": [
+        "schema_version", "source", "event_name", "observed_at", "application_id",
+        "instance_id", "service", "code", "runtime", "identity_status"
+      ],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "source": { "enum": ["beacon_security", "beacon_security_sbom"] },
+        "event_name": { "type": "string", "pattern": "^beacon\\.security\\." },
+        "observed_at": { "type": "string", "format": "date-time" },
+        "application_id": { "type": "string", "pattern": "^app-[0-9a-f]{64}$" },
+        "instance_id": { "type": "string", "minLength": 1 },
+        "service": { "type": "object" },
+        "code": {
+          "type": "object",
+          "required": ["repository", "commit", "build_id", "service_version"],
+          "properties": {
+            "repository": { "type": "string" },
+            "commit": { "type": "string" },
+            "build_id": { "type": "string" },
+            "service_version": { "type": "string" }
+          }
+        },
+        "runtime": {
+          "type": "object",
+          "required": ["language", "implementation", "version", "os", "architecture", "details"],
+          "properties": {
+            "language": { "type": "string", "minLength": 1 },
+            "implementation": { "type": "string", "minLength": 1 },
+            "version": { "type": "string" },
+            "os": { "type": "string" },
+            "architecture": { "type": "string" },
+            "details": { "type": "object" }
+          }
+        },
+        "identity_status": { "enum": ["configured", "fallback", "incomplete"] }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": ["id", "type", "name", "location", "value_type", "value_length"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^src-" },
+        "type": { "type": "string" },
+        "name": { "type": "string", "maxLength": 256 },
+        "location": { "type": "string" },
+        "value_type": { "type": "string" },
+        "value_length": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "propagation": {
+      "type": "object",
+      "required": ["id", "parent_id", "source_id", "operation", "location"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "parent_id": { "type": ["integer", "null"], "minimum": 1 },
+        "source_id": { "type": "string", "pattern": "^src-" },
+        "operation": { "type": "string" },
+        "location": { "type": "string" }
+      }
+    },
+    "range": {
+      "type": "object",
+      "required": ["source_id", "start", "end", "exact", "unit"],
+      "properties": {
+        "source_id": { "type": "string", "pattern": "^src-" },
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": ["integer", "null"], "minimum": 0 },
+        "exact": { "type": "boolean" },
+        "unit": { "enum": ["utf16_code_unit", "unicode_code_point", "byte"] }
+      }
+    },
+    "sink": {
+      "type": "object",
+      "required": ["function", "role", "location", "operation", "path_role", "input_part"],
+      "properties": {
+        "function": { "type": "string" },
+        "role": {
+          "enum": [
+            "sql_template", "shell_script", "argument", "executable", "destination_address",
+            "destination_unknown", "file_path", "path_or_query"
+          ]
+        },
+        "location": { "type": "string" },
+        "operation": { "enum": ["", "read", "write", "copy", "rename", "delete", "unknown"] },
+        "path_role": { "enum": ["", "source", "target", "unknown"] },
+        "input_part": { "enum": ["", "path", "query", "path_or_query"] }
+      }
+    },
+    "request": {
+      "type": "object",
+      "required": [
+        "method", "route", "route_status", "status_code", "started_at", "ended_at",
+        "framework", "transport", "error_type"
+      ],
+      "properties": {
+        "method": { "type": "string" },
+        "route": { "type": "string" },
+        "route_status": { "type": "string" },
+        "status_code": { "type": ["integer", "null"] },
+        "started_at": { "type": ["string", "null"], "format": "date-time" },
+        "ended_at": { "type": ["string", "null"], "format": "date-time" },
+        "framework": { "type": "string" },
+        "transport": { "type": "string" },
+        "error_type": { "type": "string" }
+      }
+    },
+    "component": {
+      "type": "object",
+      "required": [
+        "status", "sbom_id", "revision", "release_id", "application_id", "bom-ref",
+        "reason", "observed_url", "query"
+      ],
+      "properties": {
+        "status": { "type": "string" },
+        "sbom_id": { "type": "string" },
+        "revision": { "type": ["integer", "null"] },
+        "release_id": { "type": "string" },
+        "application_id": { "type": "string" },
+        "bom-ref": { "type": "string" },
+        "reason": { "type": "string" },
+        "observed_url": { "type": "string" },
+        "query": { "type": "string" }
+      }
+    },
+    "finding": {
+      "allOf": [
+        { "$ref": "#/$defs/identity" },
+        {
+          "type": "object",
+          "required": [
+            "evidence_id", "finding_id", "fingerprint_version", "rule", "assessment",
+            "validation", "severity", "confidence", "execution_observation", "precision",
+            "trace_id", "server_span_id", "current_span_id", "trace_flags", "sources",
+            "propagation", "ranges", "sink", "truncated", "coverage", "coverage_gaps",
+            "request", "component", "stack"
+          ],
+          "properties": {
+            "source": { "const": "beacon_security" },
+            "event_name": { "const": "beacon.security.finding" },
+            "evidence_id": { "type": "string", "pattern": "^ev-" },
+            "finding_id": { "type": "string", "pattern": "^finding-[0-9a-f]{64}$" },
+            "fingerprint_version": { "const": 1 },
+            "rule": { "type": "string", "minLength": 1 },
+            "assessment": { "enum": ["candidate_risk", "observation"] },
+            "validation": { "type": "string" },
+            "severity": { "type": "string" },
+            "confidence": { "enum": ["modeled_flow", "conservative_flow"] },
+            "execution_observation": { "const": "invocation_attempt" },
+            "precision": { "enum": ["exact", "conservative"] },
+            "trace_id": { "$ref": "#/$defs/hex32" },
+            "server_span_id": { "$ref": "#/$defs/hex16" },
+            "current_span_id": { "$ref": "#/$defs/hex16" },
+            "trace_flags": { "type": "integer", "minimum": 0, "maximum": 255 },
+            "sources": { "type": "array", "items": { "$ref": "#/$defs/source" } },
+            "propagation": { "type": "array", "items": { "$ref": "#/$defs/propagation" } },
+            "ranges": { "type": "array", "items": { "$ref": "#/$defs/range" } },
+            "sink": { "$ref": "#/$defs/sink" },
+            "truncated": { "type": "boolean" },
+            "coverage": { "type": "string" },
+            "coverage_gaps": { "type": "array", "items": { "type": "string" } },
+            "request": { "$ref": "#/$defs/request" },
+            "component": { "$ref": "#/$defs/component" },
+            "stack": { "type": "array", "items": { "type": "string" } },
+            "run": { "type": "object" },
+            "triage": { "type": "object" }
+          }
+        }
+      ]
+    },
+    "dependency": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string" },
+        "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "sbomSnapshot": {
+      "allOf": [
+        { "$ref": "#/$defs/identity" },
+        {
+          "type": "object",
+          "required": [
+            "sbom_id", "revision", "release_id", "status", "completeness", "reasons",
+            "component_count", "part_index", "part_count", "dependencies"
+          ],
+          "properties": {
+            "source": { "const": "beacon_security_sbom" },
+            "event_name": { "const": "beacon.security.sbom.snapshot" },
+            "sbom_id": { "type": "string", "minLength": 1 },
+            "revision": { "type": "integer", "minimum": 1 },
+            "release_id": { "type": "string", "minLength": 1 },
+            "status": { "type": "string" },
+            "completeness": { "type": "string" },
+            "reasons": { "type": "array", "items": { "type": "string" } },
+            "component_count": { "type": "integer", "minimum": 0 },
+            "part_index": { "type": "integer", "minimum": 0 },
+            "part_count": { "type": "integer", "minimum": 1 },
+            "dependencies": { "type": "array", "items": { "$ref": "#/$defs/dependency" } }
+          }
+        }
+      ]
+    },
+    "collectionIncomplete": {
+      "allOf": [
+        { "$ref": "#/$defs/identity" },
+        {
+          "type": "object",
+          "required": ["truncated", "coverage_gaps", "collection_status", "counts"],
+          "properties": {
+            "source": { "const": "beacon_security" },
+            "event_name": { "const": "beacon.security.collection.incomplete" },
+            "truncated": { "type": "boolean" },
+            "coverage_gaps": { "type": "array", "items": { "type": "string" } },
+            "collection_status": { "type": "string" },
+            "counts": {
+              "type": "object",
+              "required": ["objects", "nodes", "sources", "findings", "retained_bytes"]
+            }
+          }
+        }
+      ]
+    },
+    "diagnostic": {
+      "allOf": [
+        { "$ref": "#/$defs/identity" },
+        {
+          "type": "object",
+          "properties": {
+            "event_name": {
+              "enum": [
+                "beacon.security.finding.summary", "beacon.security.health",
+                "beacon.security.snapshot.failed", "beacon.security.export.dropped",
+                "beacon.security.sbom.health", "beacon.security.sbom.update_failed",
+                "beacon.security.sbom.export.dropped"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "minimalTruncation": {
+      "type": "object",
+      "required": ["schema_version", "source", "event_name", "truncated"],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "source": { "enum": ["beacon_security", "beacon_security_sbom"] },
+        "event_name": { "const": "beacon.security.export.truncated" },
+        "truncated": { "const": true }
+      }
+    }
+  }
+}

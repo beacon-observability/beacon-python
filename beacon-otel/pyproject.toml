@@ -28,14 +28,18 @@ dependencies = [
   "opentelemetry-api == 1.44.0",
   "opentelemetry-sdk == 1.44.0",
   "opentelemetry-instrumentation == 0.65b0",
+  "opentelemetry-instrumentation-threading == 0.65b0",
   "opentelemetry-exporter-otlp == 1.44.0",
+  "packaging >= 24",
+  "wrapt >= 1.17, < 3",
 ]
 
 [project.optional-dependencies]
-profiling = ["beacon-profiling == 1.0.1"]
+profiling = ["beacon-profiling == 1.1.0"]
 requests = ["opentelemetry-instrumentation-requests == 0.65b0"]
 flask = ["opentelemetry-instrumentation-flask == 0.65b0"]
 fastapi = ["opentelemetry-instrumentation-fastapi == 0.65b0"]
+django = ["opentelemetry-instrumentation-django == 0.65b0"]
 
 [project.scripts]
 beacon = "beacon_otel.cli:main"
@@ -45,6 +49,12 @@ beacon = "beacon_otel.distro:BeaconDistro"
 
 [project.entry-points.opentelemetry_configurator]
 beacon = "beacon_otel.distro:BeaconConfigurator"
+
+[project.entry-points.opentelemetry_instrumentor]
+beacon_security = "beacon_security:SecurityInstrumentor"
+
+[project.entry-points.opentelemetry_pre_instrument]
+beacon_security = "beacon_security:bootstrap"
 
 [project.urls]
 Homepage = "https://github.com/beacon-observability/beacon-python/tree/main/beacon-otel"
@@ -62,4 +72,4 @@ include = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/beacon_otel"]
+packages = ["src/beacon_otel", "src/beacon_security"]

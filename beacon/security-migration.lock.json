@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "repository": "https://github.com/GuanceCloud/SecurityContext.git",
+    "commit": "2c45b64267987f6deefa43159f06f928c6974177",
+    "subdirectory": "python"
+  },
+  "contract": {
+    "repository": "https://github.com/beacon-observability/beacon-security-spec",
+    "commit": "236eda11eca4e4421af4c391a995c2b6af20c766",
+    "schemaVersion": 1,
+    "fingerprintVersion": 1,
+    "schemaSha256": "b1f26843952ba388677bddc84863ae2fe23a8f0609321e5c625310d618b48a5b",
+    "fingerprintSha256": "860b1b14e8019f699764b238f0d744b649d259d39f3f3638f02ae8db68cbabc2"
+  }
+}
