@@ -54,7 +54,22 @@ jobs:
       - name: Test installed wheels
         run: |
           uv venv .beacon-test-env
-          uv pip install --python .beacon-test-env/bin/python --find-links dist 'beacon-otel[profiling,requests]' pytest
-          .beacon-test-env/bin/python -m pytest -q beacon/tests beacon-otel/tests
+          uv pip install --python .beacon-test-env/bin/python --find-links dist 'beacon-otel[profiling,requests]' pytest jsonschema
+          .beacon-test-env/bin/python -m pytest -q beacon/tests beacon-otel/tests --ignore=beacon-otel/tests/security
+          .beacon-test-env/bin/python -m pytest -q beacon-otel/tests/security/test_schema_contract.py
           .beacon-test-env/bin/python -m pytest -q sdk-extension/beacon-profiling/tests
           .beacon-test-env/bin/beacon --version
+      - name: Install Beacon Security test dependencies
+        if: matrix.python-version != '3.10'
+        run: |
+          uv pip install --python .beacon-test-env/bin/python --find-links dist \
+            'beacon-otel[requests,flask,fastapi,django]' \
+            'cyclonedx-python-lib==11.12.0' \
+            'pydantic>=2,<3' 'flask>=3.1,<3.2' 'django>=5.2,<5.3' \
+            'fastapi>=0.141,<0.142' 'starlette>=1.6,<1.7' \
+            'uvicorn>=0.52,<0.53' gunicorn httpx requests aiohttp \
+            'sqlalchemy>=2,<3' 'psycopg[binary]>=3,<4' 'pymysql>=1,<2' \
+            python-multipart psutil
+      - name: Test Beacon Security runtime
+        if: matrix.python-version != '3.10'
+        run: .beacon-test-env/bin/python -m pytest -q beacon-otel/tests/security

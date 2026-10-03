@@ -32,8 +32,15 @@ jobs:
           uv venv .beacon-test-env
           uv pip install --python .beacon-test-env/bin/python \
             --find-links dist/profiling --find-links dist/otel \
-            'beacon-otel[profiling,requests]' pytest
-          .beacon-test-env/bin/python -m pytest -q beacon/tests beacon-otel/tests
+            'beacon-otel[profiling,requests,flask,fastapi,django]' \
+            pytest jsonschema 'cyclonedx-python-lib==11.12.0' \
+            'pydantic>=2,<3' 'flask>=3.1,<3.2' 'django>=5.2,<5.3' \
+            'fastapi>=0.141,<0.142' 'starlette>=1.6,<1.7' \
+            'uvicorn>=0.52,<0.53' gunicorn httpx requests aiohttp \
+            'sqlalchemy>=2,<3' 'psycopg[binary]>=3,<4' 'pymysql>=1,<2' \
+            python-multipart psutil
+          .beacon-test-env/bin/python -m pytest -q beacon/tests beacon-otel/tests --ignore=beacon-otel/tests/security
+          .beacon-test-env/bin/python -m pytest -q beacon-otel/tests/security
           .beacon-test-env/bin/python -m pytest -q sdk-extension/beacon-profiling/tests
       - uses: actions/upload-artifact@v7
         with:
@@ -101,7 +108,7 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           release_flags=(
             --verify-tag
-            --title "Beacon Python ${version}"
+            --title "$GITHUB_REF_NAME"
             --generate-notes
           )
           if [[ "$version" == *rc* ]]; then

@@ -8,7 +8,7 @@ The primary development branch is `main`. The initial import preserved the legac
 
 | Item | Location |
 | --- | --- |
-| Main Beacon installation package and `beacon` command | [beacon-otel](../beacon-otel/) |
+| Main Beacon installation package, `beacon` command, and opt-in Security source | [beacon-otel](../beacon-otel/) |
 | Upstream auto-instrumentation distribution | [opentelemetry-distro](../opentelemetry-distro/) |
 | First-party profiling extension | [beacon-profiling](../sdk-extension/beacon-profiling/) |
 | Upstream auto-instrumentation and tests | [instrumentation](../instrumentation/) |
@@ -27,4 +27,4 @@ uvx --from uv==0.12.1 uv run --frozen --package beacon-otel --with pytest pytest
 uvx --from uv==0.12.1 uv run --frozen --package beacon-profiling --with pytest pytest -q sdk-extension/beacon-profiling/tests
 ```
 
-The repository currently provides `beacon-otel`, the `beacon` command, and `beacon-profiling`. The `1.0.1` release retains the runtime functionality validated for `1.0.0` and removes legacy product wording from public package metadata and documentation. The default profile export interval is configurable and set to 60 seconds. See [`validation/1.0.1.md`](validation/1.0.1.md) for the release acceptance record and [`validation/0.1.0rc2.md`](validation/0.1.0rc2.md) for backend evidence. The legacy `gtrace` distribution has been removed from this repository. Inherited upstream or legacy-repository release workflows must not be treated as Beacon release entry points.
+The repository currently provides `beacon-otel`, the `beacon` command, and `beacon-profiling`. The published `1.0.1` release retains the runtime functionality validated for `1.0.0` and removes legacy product wording from public package metadata and documentation. The source tree also implements opt-in Beacon Security for the next release, embedded in `beacon-otel`; it has not yet been published. Security remains disabled by default, follows the pinned schema and fingerprint version 1 contract, and does not create local files unless explicitly enabled. Its migration and contract provenance are recorded in [`security-migration.lock.json`](security-migration.lock.json), while language-specific use and Kubernetes configuration are documented in the [`beacon-otel` README](../beacon-otel/README.md#beacon-security-next-release). The default profile export interval is configurable and set to 60 seconds. See [`validation/1.0.1.md`](validation/1.0.1.md) for the release acceptance record and [`validation/0.1.0rc2.md`](validation/0.1.0rc2.md) for backend evidence. The legacy `gtrace` distribution has been removed from this repository. Inherited upstream or legacy-repository release workflows must not be treated as Beacon release entry points.

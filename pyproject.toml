@@ -184,6 +184,12 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "docs/**/*.*" = ["A001"]
 "instrumentation-genai/opentelemetry-instrumentation-google-genai/tests/*" = ["TID252"]
+# Security defers imports until the explicit opt-in gate has passed and uses
+# package-relative imports to keep that private lifecycle self-contained.
+"beacon-otel/src/beacon_security/**/*.py" = ["PLC0415", "TID252"]
+# Contract tests deliberately reload process-global instrumentation modules;
+# local imports keep those lifecycles isolated between tests.
+"beacon-otel/tests/security/**/*.py" = ["E402", "PLC0415"]
 
 [tool.ruff.lint.isort]
 detect-same-package = false # to not consider instrumentation packages as first-party

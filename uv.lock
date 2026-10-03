@@ -568,10 +568,16 @@ dependencies = [
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp" },
     { name = "opentelemetry-instrumentation" },
+    { name = "opentelemetry-instrumentation-threading" },
     { name = "opentelemetry-sdk" },
+    { name = "packaging" },
+    { name = "wrapt" },
 ]
 
 [package.optional-dependencies]
+django = [
+    { name = "opentelemetry-instrumentation-django" },
+]
 fastapi = [
     { name = "opentelemetry-instrumentation-fastapi" },
 ]
@@ -591,12 +597,16 @@ requires-dist = [
     { name = "opentelemetry-api", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-api&tag=v1.44.0" },
     { name = "opentelemetry-exporter-otlp", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=exporter%2Fopentelemetry-exporter-otlp&tag=v1.44.0" },
     { name = "opentelemetry-instrumentation", editable = "opentelemetry-instrumentation" },
+    { name = "opentelemetry-instrumentation-django", marker = "extra == 'django'", editable = "instrumentation/opentelemetry-instrumentation-django" },
     { name = "opentelemetry-instrumentation-fastapi", marker = "extra == 'fastapi'", editable = "instrumentation/opentelemetry-instrumentation-fastapi" },
     { name = "opentelemetry-instrumentation-flask", marker = "extra == 'flask'", editable = "instrumentation/opentelemetry-instrumentation-flask" },
     { name = "opentelemetry-instrumentation-requests", marker = "extra == 'requests'", editable = "instrumentation/opentelemetry-instrumentation-requests" },
+    { name = "opentelemetry-instrumentation-threading", editable = "instrumentation/opentelemetry-instrumentation-threading" },
     { name = "opentelemetry-sdk", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-sdk&tag=v1.44.0" },
+    { name = "packaging", specifier = ">=24" },
+    { name = "wrapt", specifier = ">=1.17,<3" },
 ]
-provides-extras = ["fastapi", "flask", "profiling", "requests"]
+provides-extras = ["django", "fastapi", "flask", "profiling", "requests"]
 
 [[package]]
 name = "beacon-profiling"

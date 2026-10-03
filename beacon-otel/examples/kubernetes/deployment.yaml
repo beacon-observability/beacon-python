@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: orders
+  template:
+    metadata:
+      labels:
+        app: orders
+    spec:
+      containers:
+        - name: orders
+          # Build Beacon Python into the application image. No separate
+          # Security image, sidecar, or init container is required.
+          image: registry.example.com/shop/orders:with-beacon-python
+          command:
+            - beacon
+            - uvicorn
+            - orders.asgi:application
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8000"
+          env:
+            - name: BEACON_SECURITY_ENABLED
+              value: "true"
+            - name: BEACON_SECURITY_PYTHON_INCLUDE
+              value: orders
+            - name: BEACON_SECURITY_LOCAL_OUTPUT_ENABLED
+              value: "false"
+            - name: OTEL_SERVICE_NAME
+              value: orders
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: service.namespace=shop,deployment.environment.name=production
+            - name: OTEL_LOGS_EXPORTER
+              value: otlp
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: grpc
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://opentelemetry-collector.observability.svc:4317
+          ports:
+            - name: http
+              containerPort: 8000
