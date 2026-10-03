@@ -39,6 +39,8 @@ jobs:
             'uvicorn>=0.52,<0.53' gunicorn httpx requests aiohttp \
             'sqlalchemy>=2,<3' 'psycopg[binary]>=3,<4' 'pymysql>=1,<2' \
             python-multipart psutil
+          uv pip install --python .beacon-test-env/bin/python --reinstall --no-deps --no-cache \
+            dist/otel/beacon_otel-*.whl dist/profiling/beacon_profiling-*.whl
           .beacon-test-env/bin/python -m pytest -q beacon/tests beacon-otel/tests --ignore=beacon-otel/tests/security
           .beacon-test-env/bin/python -m pytest -q beacon-otel/tests/security
           .beacon-test-env/bin/python -m pytest -q sdk-extension/beacon-profiling/tests
