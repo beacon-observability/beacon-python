@@ -1,17 +1,18 @@
 # Beacon Python
 
-`beacon-otel` is the main Beacon Python installation package. The current stable version is `1.0.1`.
+`beacon-otel` is the main Beacon Python installation package. This source tree
+builds the `1.1.0` release.
 
 Install the main package together with the auto-instrumentation plugins required by your framework. For example, a FastAPI application can install the current stable version with:
 
 ```bash
-pip install 'beacon-otel[fastapi]==1.0.1'
+pip install 'beacon-otel[fastapi]==1.1.0'
 ```
 
 To enable profiling, install:
 
 ```bash
-pip install 'beacon-otel[fastapi,profiling]==1.0.1'
+pip install 'beacon-otel[fastapi,profiling]==1.1.0'
 ```
 
 Activate the virtual environment where Beacon is installed, configure the OTLP endpoint, and then start the application. You can also pass the full path of an executable in that virtual environment after `beacon`:
@@ -28,11 +29,10 @@ Optional dependencies install only the corresponding auto-instrumentation plugin
 
 By default, `beacon` selects the Beacon OpenTelemetry distro and configurator and uses the standard `OTEL_*` environment variables. Explicitly configured `OTEL_PYTHON_DISTRO` or `OTEL_PYTHON_CONFIGURATOR` values are not overwritten. Profiling is disabled by default; see the [profiling documentation](../sdk-extension/beacon-profiling/README.rst) to enable it.
 
-## Beacon Security (next release)
+## Beacon Security
 
-The source tree now includes opt-in Beacon Security in the same `beacon-otel`
-wheel and command. It is not part of the published `1.0.1` package. A future
-Beacon Python release will not require a second Security distribution or a
+Beacon Python `1.1.0` includes opt-in Beacon Security in the same `beacon-otel`
+wheel and command. It does not require a second Security distribution or a
 second version lifecycle.
 
 Security currently supports standard-GIL CPython 3.11 through 3.14. The master
@@ -86,7 +86,7 @@ this command with `beacon` or `opentelemetry-instrument`, and do not enable
 gunicorn -c python:beacon_security.gunicorn orders.wsgi:application
 ```
 
-For Kubernetes, bake the future `beacon-otel` release into the application
+For Kubernetes, bake the `beacon-otel` release into the application
 image and use the checked-in [Deployment example](examples/kubernetes/deployment.yaml).
 The example needs only the normal application command, environment variables,
 and an OTLP Collector endpoint; it deliberately leaves local output disabled.
