@@ -1,7 +1,7 @@
 Beacon Profiling for Python
 ===========================
 
-The current stable version is ``beacon-profiling==1.0.1``.
+The current stable version is ``beacon-profiling==1.1.0``.
 
 This package provides a Python profiling runtime for OpenTelemetry
 auto-instrumentation. The current implementation exports profiles via OTLP
