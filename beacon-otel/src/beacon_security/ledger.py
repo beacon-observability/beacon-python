@@ -336,7 +336,7 @@ class RuntimeLedger:
                 state.run = {}
 
     def end(self, state: Any) -> list[dict]:
-        """Close a request, aggregate all occurrences, and return sampled output."""
+        """Close a request, aggregate all occurrences, and return bounded request occurrences."""
 
         with self._lock:
             self._active = max(0, self._active - 1)
@@ -413,7 +413,8 @@ class RuntimeLedger:
                 )
                 run_id = str(run_state.get("run_id", ""))
                 sample = (
-                    now_millis - previous_sample >= self._sample_millis
+                    finding is None
+                    or now_millis - previous_sample >= self._sample_millis
                     or run_id
                     != (
                         str(finding.get("sample_run_id", ""))
@@ -437,6 +438,11 @@ class RuntimeLedger:
                 if finding is None:
                     if len(self._findings) >= self._max_findings:
                         self._increment_count("finding_capacity_dropped", 1)
+                        event["aggregation_status"] = "capacity_exceeded"
+                        event["evidence_sample_reason"] = "finding_capacity"
+                        self._omit_evidence(event)
+                        event.pop("occurrences_total", None)
+                        result.append(event)
                         continue
                     finding = {
                         "finding_id": finding_key,
@@ -461,6 +467,12 @@ class RuntimeLedger:
                 finding["triage"] = self._triage(finding_key)
                 event["triage"] = _copy(finding["triage"])
 
+                event["occurrences_total"] = finding["occurrences"]
+                event["aggregation_status"] = "tracked"
+                event["evidence_sampled"] = sample
+                event["evidence_sample_reason"] = (
+                    "interval_or_run" if sample else "interval"
+                )
                 if sample:
                     finding["last_sample_millis"] = now_millis
                     finding["sample_run_id"] = run_id
@@ -477,14 +489,7 @@ class RuntimeLedger:
                         or self._finding_bytes - previous_bytes + estimate
                         > self._max_finding_bytes
                     ):
-                        for field in (
-                            "propagation",
-                            "ranges",
-                            "sources",
-                            "stack",
-                        ):
-                            representative.pop(field, None)
-                        representative["truncated"] = True
+                        self._omit_evidence(representative)
                         representative["truncation_reason"] = (
                             "finding_snapshot_byte_budget"
                         )
@@ -505,12 +510,12 @@ class RuntimeLedger:
                             0, self._finding_bytes - previous_bytes
                         )
                         finding["representative_bytes"] = 0
-                    event["occurrences_total"] = finding["occurrences"]
-                    result.append(event)
                 else:
                     self._increment_count(
                         "representative_samples_suppressed", 1
                     )
+                    self._omit_evidence(event)
+                result.append(event)
                 finding["dirty"] = True
                 self._findings_revision += 1
 
@@ -857,6 +862,14 @@ class RuntimeLedger:
         except Exception:
             pass
 
+    @staticmethod
+    def _omit_evidence(event: dict) -> None:
+        for field in ("sources", "propagation", "ranges", "stack"):
+            event[field] = []
+        event["evidence_sampled"] = False
+        event["truncated"] = True
+        event["truncation_reason"] = "evidence_sampled_out"
+
     def _enrich_event(
         self,
         original: Mapping[str, Any],
@@ -867,8 +880,8 @@ class RuntimeLedger:
         gaps: list[str],
         include_details: bool = True,
     ) -> dict:
-        # Sampling changes only the exported representative. The original
-        # request evidence remains intact for run accounting and callers.
+        # Omit only the exported detail graph. Preserve request evidence for
+        # run accounting and same-request detection semantics.
         event = _copy(
             dict(original)
             if include_details

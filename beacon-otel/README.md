@@ -96,3 +96,26 @@ SBOM contract is maintained in
 [beacon-security-spec](https://github.com/beacon-observability/beacon-security-spec).
 This wheel carries an immutable contract revision in
 [`security-spec.properties`](src/beacon_security/security-spec.properties).
+
+### Finding occurrences and detail sampling
+
+Security exports one `beacon.security.finding` occurrence per finding fingerprint
+per request. Repeated detections within a request share an evidence ID; different
+requests retain their own `evidence_id` (`occurrence_id`) and trace/span IDs while
+sharing the stable `finding_id`. Occurrences without a trace are also exported.
+A trace ID does not guarantee that a receiver retained the trace.
+
+`BEACON_SECURITY_FINDINGS_SAMPLE_SECONDS` (default `300`) limits full-evidence
+sampling, independently of occurrence delivery and OpenTelemetry trace sampling.
+Lightweight occurrences have `evidence_sampled=false`, a bounded
+`evidence_sample_reason`, empty `sources`, `propagation`, `ranges`, and `stack`,
+and `truncation_reason=evidence_sampled_out`. Empty evidence arrays do not mean
+there was no taint. Identity, sink, request context, and correlation remain.
+
+`occurrences_total` counts requests per finding in this process. When aggregation
+capacity is exceeded, `aggregation_status=capacity_exceeded` accompanies the
+occurrence and the unavailable total is omitted. Otherwise status is `tracked`.
+The representative snapshot can describe an earlier request than `last_trace_id`.
+Queues, rate limits, and byte budgets still bound export; health counters expose
+loss. Very small byte limits can produce `beacon.security.export.truncated`
+envelopes. Occurrence export can increase log volume and is not durable delivery.

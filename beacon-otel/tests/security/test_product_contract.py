@@ -199,7 +199,19 @@ def test_repeated_findings_preserve_samples_counts_and_new_run_details(
     )
     clock[0] += 1000
     repeated, emitted = request("repeated")
-    assert emitted == []
+    assert len(emitted) == 1
+    occurrence = emitted[0]
+    assert occurrence["finding_id"] == first["finding_id"]
+    assert occurrence["evidence_id"] == repeated["evidence_id"]
+    assert occurrence["occurrence_id"] != first["evidence_id"]
+    assert occurrence["trace_id"] == "b" * 32
+    assert occurrence["occurrences_total"] == 2
+    assert occurrence["aggregation_status"] == "tracked"
+    assert occurrence["evidence_sampled"] is False
+    assert occurrence["evidence_sample_reason"] == "interval"
+    assert occurrence["truncation_reason"] == "evidence_sampled_out"
+    for field in ("sources", "propagation", "ranges", "stack"):
+        assert occurrence[field] == []
     ledger.tick({}, lambda _: None, force=True)
     finding = _read_json(tmp_path / "findings.json")["findings"][0]
     assert finding["occurrences"] == 2 and finding["last_trace_id"] == "b" * 32
