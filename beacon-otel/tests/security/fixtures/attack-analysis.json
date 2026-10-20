@@ -146,6 +146,31 @@
       "text": "echo name > output",
       "input": "name",
       "status": "unknown"
+    },
+    {
+      "text": "echo *",
+      "input": "*",
+      "status": "unknown"
+    },
+    {
+      "text": "echo a?",
+      "input": "a?",
+      "status": "unknown"
+    },
+    {
+      "text": "echo [a-z]",
+      "input": "[a-z]",
+      "status": "unknown"
+    },
+    {
+      "text": "echo ~user",
+      "input": "~user",
+      "status": "unknown"
+    },
+    {
+      "text": "echo '*'",
+      "input": "'*'",
+      "status": "no_evidence"
     }
   ]
 }
