@@ -1,18 +1,18 @@
 # Beacon Python
 
 `beacon-otel` is the main Beacon Python installation package. This source tree
-builds the `1.1.0` release.
+prepares the `1.2.0` release.
 
 Install the main package together with the auto-instrumentation plugins required by your framework. For example, a FastAPI application can install the current stable version with:
 
 ```bash
-pip install 'beacon-otel[fastapi]==1.1.0'
+pip install 'beacon-otel[fastapi]==1.2.0'
 ```
 
 To enable profiling, install:
 
 ```bash
-pip install 'beacon-otel[fastapi,profiling]==1.1.0'
+pip install 'beacon-otel[fastapi,profiling]==1.2.0'
 ```
 
 Activate the virtual environment where Beacon is installed, configure the OTLP endpoint, and then start the application. You can also pass the full path of an executable in that virtual environment after `beacon`:
@@ -119,3 +119,37 @@ The representative snapshot can describe an earlier request than `last_trace_id`
 Queues, rate limits, and byte budgets still bound export; health counters expose
 loss. Very small byte limits can produce `beacon.security.export.truncated`
 envelopes. Occurrence export can increase log volume and is not durable delivery.
+
+### Request-specific attack evidence
+
+A finding's code-risk `assessment` and `validation=unvalidated` are independent
+of `attack_evidence`. Its status is `unknown` for unsupported or imprecise
+analysis, `no_evidence` when supported analysis finds no exploitation evidence,
+or `suspected` when tainted input controls supported syntax. Reasons are bounded
+machine-readable values without captured request data. `outcome=not_assessed`
+remains explicit: an invocation, normal return, or HTTP status cannot establish
+successful exploitation. `no_evidence` is not a safety verdict.
+
+Set `BEACON_SECURITY_ANALYSIS_SQL_DIALECT=ansi` to enable the bounded ANSI lexical
+subset; the default is `unknown`. It supports single/double quoted strings and
+identifiers, doubled SQL quotes, numeric literals, and simple SQL operators and
+comments. This is not a SQL parser or complete dialect implementation. Other
+dialects, backslash/dollar quoting, unsupported syntax, imprecise ranges, and
+inputs exceeding 8192 code points or 64 marks retain uncertainty. Fixed SQL
+parameter binding remains separate from untrusted dynamic templates.
+
+The shell subset supports simple POSIX `sh`, `bash`, `dash`, `ksh`, and `zsh`
+commands, quoting, escapes, and control separators. Expansion, redirection,
+compound syntax, and other shells remain `unknown`. Executable control requires
+policy; ordinary argv and fixed-destination path/query input remain separate
+observations. Network allowlist and filesystem-root policies are not implemented,
+so related boundary decisions remain `unknown`. Normalization alone does not
+prove safety. Byte strings are not interpreted as a known textual dialect.
+
+Within a request, `suspected > unknown > no_evidence` selects the retained
+occurrence without changing its ID or counting it twice. Stronger evidence
+bypasses ordinary detail sampling. Each later request retains its own status;
+a weaker request cannot replace a stronger representative.
+`attack_evidence_counts` partitions process-local request occurrences by the
+three statuses, and `strongest_attack_evidence` describes the strongest retained
+status. These counters do not represent confirmed attacks or exploit successes.

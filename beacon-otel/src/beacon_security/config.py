@@ -235,6 +235,11 @@ def profile(adapters: list[str] | tuple[str, ...] = ()) -> str:
                 "runtime": runtime_identity(),
                 "dependencies": versions,
                 "budgets": budgets,
+                "analysis": {
+                    "sql_dialect": text(
+                        "beacon.security.analysis.sql.dialect", "unknown"
+                    )
+                },
                 "adapters": sorted(adapters),
                 "include": prefixes("beacon.security.python.include"),
                 "exclude": prefixes("beacon.security.python.exclude"),
