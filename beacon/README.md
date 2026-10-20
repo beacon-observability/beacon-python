@@ -4,6 +4,8 @@ This standalone repository maintains the complete [OpenTelemetry Python Contrib]
 
 The primary development branch is `main`. The initial import preserved the legacy `gtrace` commit history and merged the official `v0.65b0` release tag. The [version file](version.properties) is the only manually maintained source for the Beacon Python development version. The tags and full commits for Contrib `v0.65b0` and the corresponding Core `v1.44.0` are recorded in the [baseline record](upstream.lock.json). Actual Core development dependencies remain defined by the root [pyproject.toml](../pyproject.toml) and [uv.lock](../uv.lock) and are verified by the version-check script. See [upstream synchronization](UPSTREAM.md) for future upgrades.
 
+This source tree prepares `1.2.0`, adding request-specific Security occurrences, trace correlation, and bounded attack-evidence analysis.
+
 ## Code and Validation Resources
 
 | Item | Location |
