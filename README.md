@@ -2,7 +2,7 @@
 
 Beacon Python is a Python auto-instrumentation and enhancement project based on the complete OpenTelemetry Python Contrib source. It preserves upstream history and is developed and released independently for each language.
 
-The current stable release is `1.1.0` for both [`beacon-otel`](https://pypi.org/project/beacon-otel/1.1.0/) and [`beacon-profiling`](https://pypi.org/project/beacon-profiling/1.1.0/). Its public-artifact acceptance record is maintained in [`beacon/validation/1.1.0.md`](beacon/validation/1.1.0.md). Download links and support statements for upstream OpenTelemetry packages do not represent Beacon Python release status.
+The current stable release is `1.2.0` for both [`beacon-otel`](https://pypi.org/project/beacon-otel/1.2.0/) and [`beacon-profiling`](https://pypi.org/project/beacon-profiling/1.2.0/). Its public-artifact acceptance record is maintained in [`beacon/validation/1.2.0.md`](beacon/validation/1.2.0.md). Download links and support statements for upstream OpenTelemetry packages do not represent Beacon Python release status.
 
 ## Development Resources
 

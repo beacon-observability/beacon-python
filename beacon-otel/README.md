@@ -1,7 +1,7 @@
 # Beacon Python
 
-`beacon-otel` is the main Beacon Python installation package. This source tree
-prepares the `1.2.0` release.
+`beacon-otel` is the main Beacon Python installation package. The current stable
+release is `1.2.0`.
 
 Install the main package together with the auto-instrumentation plugins required by your framework. For example, a FastAPI application can install the current stable version with:
 
