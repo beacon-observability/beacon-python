@@ -138,6 +138,31 @@
         "query": { "type": "string" }
       }
     },
+    "attackEvidence": {
+      "type": "object",
+      "required": [
+        "status",
+        "reason",
+        "outcome"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "unknown",
+            "no_evidence",
+            "suspected"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "outcome": {
+          "const": "not_assessed"
+        }
+      }
+    },
     "finding": {
       "allOf": [
         { "$ref": "#/$defs/identity" },
@@ -157,6 +182,12 @@
             "finding_id": { "type": "string", "pattern": "^finding-[0-9a-f]{64}$" },
             "fingerprint_version": { "const": 1 },
             "rule": { "type": "string", "minLength": 1 },
+            "attack_evidence": {"$ref": "#/$defs/attackEvidence"},
+            "occurrence_id": {"type": "string", "pattern": "^ev-"},
+            "evidence_sampled": {"type": "boolean"},
+            "evidence_sample_reason": {"type": "string"},
+            "aggregation_status": {"enum": ["tracked", "capacity_exceeded"]},
+            "occurrences_total": {"type": "integer", "minimum": 1},
             "assessment": { "enum": ["candidate_risk", "observation"] },
             "validation": { "type": "string" },
             "severity": { "type": "string" },

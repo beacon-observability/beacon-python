@@ -466,8 +466,14 @@ class Exporter:
             return encoded, False
 
         reduced = dict(event)
-        for field in ("propagation", "ranges", "sources"):
-            reduced.pop(field, None)
+        for field in ("propagation", "ranges", "sources", "stack"):
+            if event.get("event_name") == "beacon.security.finding":
+                reduced[field] = []
+            else:
+                reduced.pop(field, None)
+        if event.get("event_name") == "beacon.security.finding":
+            reduced["evidence_sampled"] = False
+            reduced["evidence_sample_reason"] = "record_byte_limit"
         reduced["truncated"] = True
         reduced["truncation_reason"] = "record_byte_limit"
         encoded = _encode_json(reduced)
