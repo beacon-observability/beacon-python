@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import pytest
 from beacon_security.ledger import RuntimeLedger
 from beacon_security.state import SecurityState
 
@@ -25,17 +27,32 @@ def configure(monkeypatch, tmp_path) -> None:
 
 
 def occurrence(
-    ledger: RuntimeLedger, index: int, location: str = "query"
+    ledger: RuntimeLedger,
+    index: int,
+    location: str = "query",
+    fragment: str | None = None,
 ) -> dict:
     state = SecurityState(IDENTITY)
     ledger.begin(state)
     state.trace_id = f"{index:032x}" if index else ""
     state.server_span_id = f"{index:016x}" if index else ""
     value = ("_" + f"input-{index}")[1:]
+    if fragment is not None:
+        value = "SELECT * FROM users WHERE id=" + fragment
     state.source(value, "http.request.parameter", "q")
+    marks = state.marks(value)
+    if fragment is not None:
+        marks = tuple(
+            replace(mark, start=value.index(fragment)) for mark in marks
+        )
     try:
         event = state.sink(
-            "sql_injection", "db.execute", "template", value, location=location
+            "sql_injection",
+            "db.execute",
+            "template",
+            value,
+            location=location,
+            marks=marks,
         )
         assert event is not None
         assert (
@@ -45,6 +62,7 @@ def occurrence(
                 "template",
                 value,
                 location=location,
+                marks=marks,
             )
             is None
         )
@@ -118,8 +136,9 @@ def test_concurrent_requests_are_independent(monkeypatch, tmp_path) -> None:
     ]
 
 
+@pytest.mark.parametrize("fragments", [None, ("12", "1 OR 1=1", "14")])
 def test_lightweight_occurrences_reach_otlp_http(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, fragments
 ) -> None:
     from beacon_security.exporter import Exporter
 
@@ -168,8 +187,17 @@ def test_lightweight_occurrences_reach_otlp_http(
     exporter = Exporter(IDENTITY, "otlp-occurrences", tmp_path)
     exporter._otel_logger = provider.get_logger("io.beacon.security")
     try:
+        if fragments:
+            monkeypatch.setenv("BEACON_SECURITY_ANALYSIS_SQL_DIALECT", "ansi")
         for index in (1, 2, 3):
-            exporter.emit(occurrence(exporter.ledger, index), evidence=True)
+            exporter.emit(
+                occurrence(
+                    exporter.ledger,
+                    index,
+                    fragment=fragments[index - 1] if fragments else None,
+                ),
+                evidence=True,
+            )
         assert exporter.flush(timeout=5)
         findings = [
             (log, json.loads(log.body.string_value))
@@ -182,9 +210,17 @@ def test_lightweight_occurrences_reach_otlp_http(
         assert len({event["occurrence_id"] for _, event in findings}) == 3
         assert [event["evidence_sampled"] for _, event in findings] == [
             True,
-            False,
+            bool(fragments),
             False,
         ]
+        if fragments:
+            assert [
+                event["attack_evidence"]["status"] for _, event in findings
+            ] == ["no_evidence", "suspected", "no_evidence"]
+            assert all(
+                event["attack_evidence"]["outcome"] == "not_assessed"
+                for _, event in findings
+            )
         assert [log.trace_id.hex() for log, _ in findings] == [
             f"{index:032x}" for index in (1, 2, 3)
         ]

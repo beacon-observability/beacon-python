@@ -170,6 +170,18 @@ def _split_command(
     return executable_marks, argument_marks, script_marks, script
 
 
+def _shell_dialect(command: Any, shell: bool | None, executable: Any) -> str:
+    if shell is True:
+        if executable is not None:
+            return _program_name(executable)
+        return "sh" if os.name == "posix" else "unknown"
+    if shell is False and _explicit_shell_index(command) is not None:
+        return _program_name(
+            executable if executable is not None else command[0]
+        )
+    return "unknown"
+
+
 def _report_command(
     function: str, command: Any, shell: bool | None, executable: Any = None
 ) -> None:
@@ -198,6 +210,7 @@ def _report_command(
         "shell_script",
         script,
         marks=script_marks,
+        shell_dialect=_shell_dialect(command, shell, executable),
     )
 
 
