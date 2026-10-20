@@ -1,0 +1,151 @@
+{
+  "sql": [
+    {
+      "text": "SELECT * FROM users WHERE name='guest'",
+      "input": "guest",
+      "status": "no_evidence"
+    },
+    {
+      "text": "SELECT * FROM users WHERE name='OR UNION SELECT'",
+      "input": "OR UNION SELECT",
+      "status": "no_evidence"
+    },
+    {
+      "text": "SELECT * FROM users WHERE name='O''Reilly'",
+      "input": "O''Reilly",
+      "status": "no_evidence"
+    },
+    {
+      "text": "SELECT * FROM users WHERE name='O'Reilly'",
+      "input": "O'Reilly",
+      "status": "unknown"
+    },
+    {
+      "text": "SELECT * FROM users WHERE name='' OR '1'='1'",
+      "input": "' OR '1'='1",
+      "status": "suspected"
+    },
+    {
+      "text": "SELECT * FROM users WHERE id=1 OR 1=1",
+      "input": "1 OR 1=1",
+      "status": "suspected"
+    },
+    {
+      "text": "SELECT * FROM users WHERE id=-12",
+      "input": "-12",
+      "status": "no_evidence"
+    },
+    {
+      "text": "SELECT * FROM users WHERE id=12.5",
+      "input": "12.5",
+      "status": "no_evidence"
+    },
+    {
+      "text": "SELECT * FROM users WHERE id=1-1",
+      "input": "1-1",
+      "status": "suspected"
+    },
+    {
+      "text": "SELECT * FROM users WHERE id=1 + 1",
+      "input": "1 + 1",
+      "status": "suspected"
+    },
+    {
+      "text": "SELECT * FROM users WHERE id=1.2.3",
+      "input": "1.2.3",
+      "status": "unknown"
+    },
+    {
+      "text": "SELECT name FROM users",
+      "input": "name",
+      "status": "unknown"
+    },
+    {
+      "text": "SELECT * FROM users WHERE name=$$guest$$",
+      "input": "guest",
+      "status": "unknown"
+    },
+    {
+      "text": "SELECT * FROM users WHERE name='a\\'b'",
+      "input": "a\\'b",
+      "status": "unknown"
+    },
+    {
+      "text": "SELECT * FROM users WHERE id=1; DELETE FROM users",
+      "input": "1; DELETE FROM users",
+      "status": "suspected"
+    },
+    {
+      "text": "SELECT * FROM users WHERE id=1 /*",
+      "input": "1 /*",
+      "status": "unknown"
+    },
+    {
+      "text": "SELECT '😀guest'",
+      "input": "guest",
+      "status": "no_evidence"
+    }
+  ],
+  "shell": [
+    {
+      "text": "echo guest",
+      "input": "guest",
+      "status": "no_evidence"
+    },
+    {
+      "text": "echo if",
+      "input": "if",
+      "status": "no_evidence"
+    },
+    {
+      "text": "if test guest; then echo ok; fi",
+      "input": "guest",
+      "status": "unknown"
+    },
+    {
+      "text": "echo 'a;b'",
+      "input": "a;b",
+      "status": "no_evidence"
+    },
+    {
+      "text": "echo \"a;b\"",
+      "input": "a;b",
+      "status": "no_evidence"
+    },
+    {
+      "text": "echo a\\;b",
+      "input": "a\\;b",
+      "status": "no_evidence"
+    },
+    {
+      "text": "echo guest; id",
+      "input": "guest; id",
+      "status": "suspected"
+    },
+    {
+      "text": "echo 'guest'; id; echo ''",
+      "input": "guest'; id; echo '",
+      "status": "suspected"
+    },
+    {
+      "text": "echo 'unclosed",
+      "input": "unclosed",
+      "status": "unknown"
+    },
+    {
+      "text": "echo $(id)",
+      "input": "$(id)",
+      "status": "unknown"
+    },
+    {
+      "text": "echo '${name}'",
+      "input": "${name}",
+      "status": "no_evidence"
+    },
+    {
+      "text": "echo name > output",
+      "input": "name",
+      "status": "unknown"
+    }
+  ]
+}

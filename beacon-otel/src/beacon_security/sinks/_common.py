@@ -73,6 +73,7 @@ def safe_sink(
     *,
     marks: Iterable[Any] | None = None,
     location: str = "",
+    shell_dialect: str = "unknown",
 ) -> None:
     """Report a sink and never interfere with the application call."""
 
@@ -89,6 +90,7 @@ def safe_sink(
             value,
             marks=tuple(marks or ()),
             location=location,
+            shell_dialect=shell_dialect,
         )
     except BaseException:
         return

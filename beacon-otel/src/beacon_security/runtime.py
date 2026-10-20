@@ -245,7 +245,16 @@ def source(value, kind, name, location=""):
     return value
 
 
-def sink(rule, function, role, value=None, *, marks=None, location=""):
+def sink(
+    rule,
+    function,
+    role,
+    value=None,
+    *,
+    marks=None,
+    location="",
+    shell_dialect="unknown",
+):
     state = current_state()
     if state is None:
         return None
@@ -253,7 +262,13 @@ def sink(rule, function, role, value=None, *, marks=None, location=""):
         with suppress():
             location = location or caller_location()
             event = state.sink(
-                rule, function, role, value, marks=marks, location=location
+                rule,
+                function,
+                role,
+                value,
+                marks=marks,
+                location=location,
+                shell_dialect=shell_dialect,
             )
             if event is not None:
                 inventory = get_runtime().inventory
