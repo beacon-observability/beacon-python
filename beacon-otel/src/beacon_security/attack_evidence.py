@@ -146,6 +146,8 @@ def lexical(
             index += 1
             continue
         if shell:
+            if char in "*?[]~":
+                return evidence("unknown", "shell_expansion_unsupported")
             if char in "(){}<>":
                 return evidence("unknown", "shell_syntax_unsupported")
             if char == "#" and (index == 0 or value[index - 1].isspace()):
