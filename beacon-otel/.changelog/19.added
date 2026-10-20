@@ -1,0 +1,1 @@
+Export a request-specific Security finding occurrence and trace correlation independently of full-evidence sampling, including when process-local aggregation is full.
