@@ -12,7 +12,7 @@ from collections import OrderedDict, deque
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-from . import config
+from . import attack_evidence, config
 from .schema import event_record, request_fields
 
 _MISSING = object()
@@ -412,8 +412,16 @@ class RuntimeLedger:
                     else 0
                 )
                 run_id = str(run_state.get("run_id", ""))
+                strongest = (
+                    int(finding.get("strongest_evidence_rank", -1))
+                    if finding
+                    else -1
+                )
+                rank = attack_evidence.rank(original)
+                upgrade = rank > strongest
                 sample = (
-                    finding is None
+                    upgrade
+                    or finding is None
                     or now_millis - previous_sample >= self._sample_millis
                     or run_id
                     != (
@@ -451,12 +459,22 @@ class RuntimeLedger:
                         "validation": "unvalidated",
                         "sink": event.get("sink"),
                         "first_seen": event.get("observed_at"),
+                        "attack_evidence_counts": {
+                            "unknown": 0,
+                            "no_evidence": 0,
+                            "suspected": 0,
+                        },
                         "occurrences": 0,
                         "last_sample_millis": 0,
                     }
                     self._findings[finding_key] = finding
 
                 self._increment_record(finding, "occurrences", 1)
+                self._increment_record(
+                    finding["attack_evidence_counts"],
+                    attack_evidence.status(event),
+                    1,
+                )
                 finding["last_seen"] = event.get("observed_at")
                 finding["last_trace_id"] = event.get("trace_id")
                 finding["last_evidence_id"] = event.get("evidence_id")
@@ -471,45 +489,58 @@ class RuntimeLedger:
                 event["aggregation_status"] = "tracked"
                 event["evidence_sampled"] = sample
                 event["evidence_sample_reason"] = (
-                    "interval_or_run" if sample else "interval"
+                    "evidence_upgrade"
+                    if upgrade
+                    else "interval_or_run"
+                    if sample
+                    else "interval"
                 )
+                if upgrade:
+                    finding["strongest_evidence_rank"] = rank
+                    finding["strongest_attack_evidence"] = _copy(
+                        event.get(
+                            "attack_evidence",
+                            attack_evidence.evidence(
+                                "unknown", "analysis_unavailable"
+                            ),
+                        )
+                    )
+                    finding["assessment"] = event.get("assessment")
                 if sample:
                     finding["last_sample_millis"] = now_millis
                     finding["sample_run_id"] = run_id
-                    representative = _copy(event)
-                    estimate = _estimate(representative)
-                    previous_bytes = _number(
-                        finding.get("representative_bytes")
-                    )
-                    if (
-                        estimate
-                        > config.limit(
-                            "beacon.security.evidence.max.bytes", 65536
-                        )
-                        or self._finding_bytes - previous_bytes + estimate
-                        > self._max_finding_bytes
-                    ):
-                        self._omit_evidence(representative)
-                        representative["truncation_reason"] = (
-                            "finding_snapshot_byte_budget"
-                        )
+                    if rank >= strongest:
+                        representative = _copy(event)
                         estimate = _estimate(representative)
-                        self._increment_count("finding_sample_truncated", 1)
-
-                    if (
-                        self._finding_bytes - previous_bytes + estimate
-                        <= self._max_finding_bytes
-                    ):
-                        self._finding_bytes += estimate - previous_bytes
-                        finding["representative_bytes"] = estimate
-                        finding["representative"] = representative
-                    else:
-                        self._increment_count("finding_sample_dropped", 1)
-                        finding.pop("representative", None)
-                        self._finding_bytes = max(
-                            0, self._finding_bytes - previous_bytes
+                        previous_bytes = _number(
+                            finding.get("representative_bytes")
                         )
-                        finding["representative_bytes"] = 0
+                        if (
+                            estimate
+                            > config.limit(
+                                "beacon.security.evidence.max.bytes", 65536
+                            )
+                            or self._finding_bytes - previous_bytes + estimate
+                            > self._max_finding_bytes
+                        ):
+                            self._omit_evidence(representative)
+                            representative["truncation_reason"] = (
+                                "finding_snapshot_byte_budget"
+                            )
+                            estimate = _estimate(representative)
+                            self._increment_count(
+                                "finding_sample_truncated", 1
+                            )
+
+                        if (
+                            self._finding_bytes - previous_bytes + estimate
+                            <= self._max_finding_bytes
+                        ):
+                            self._finding_bytes += estimate - previous_bytes
+                            finding["representative_bytes"] = estimate
+                            finding["representative"] = representative
+                        else:
+                            self._increment_count("finding_sample_dropped", 1)
                 else:
                     self._increment_count(
                         "representative_samples_suppressed", 1
@@ -620,6 +651,9 @@ class RuntimeLedger:
                             "observed_at": _now(),
                             "identity": _copy(self.identity),
                             "finding_id": finding.get("finding_id"),
+                            "attack_evidence_counts": dict(
+                                finding["attack_evidence_counts"]
+                            ),
                             "occurrences_total": finding.get("occurrences", 0),
                             "first_seen": finding.get("first_seen"),
                             "last_seen": finding.get("last_seen"),
@@ -640,11 +674,15 @@ class RuntimeLedger:
                 # Representatives and nested metadata are owned by the ledger
                 # and replaced, never edited. Freeze just the mutable outer row.
                 copied = dict(finding)
+                copied["attack_evidence_counts"] = dict(
+                    finding["attack_evidence_counts"]
+                )
                 for field in (
                     "dirty",
                     "last_sample_millis",
                     "sample_run_id",
                     "representative_bytes",
+                    "strongest_evidence_rank",
                 ):
                     copied.pop(field, None)
                 finding_snapshot.append(copied)

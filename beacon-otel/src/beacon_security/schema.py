@@ -240,6 +240,15 @@ def event_record(original, identity=None):
             event.get("component"), event.get("application_id", "")
         )
         event.setdefault("stack", [])
+    if name == "beacon.security.finding":
+        event.setdefault(
+            "attack_evidence",
+            {
+                "status": "unknown",
+                "reason": "analysis_unavailable",
+                "outcome": "not_assessed",
+            },
+        )
     if name == "beacon.security.collection.incomplete":
         event["counts"] = {
             "objects": None,

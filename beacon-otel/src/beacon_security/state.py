@@ -8,7 +8,7 @@ from itertools import islice
 
 from opentelemetry import trace
 
-from . import config
+from . import attack_evidence, config
 from .locations import call_stack, caller_location
 from .schema import event_record, finding_fingerprint, sink_fields
 from .tracking import ByteBudget, Mark, reference, shared_scalar
@@ -401,7 +401,15 @@ class SecurityState:
         return result
 
     def sink(
-        self, rule, function, role, value=None, *, marks=None, location=""
+        self,
+        rule,
+        function,
+        role,
+        value=None,
+        *,
+        marks=None,
+        location="",
+        shell_dialect="unknown",
     ):
         with self.lock:
             if self.closed or not self.collection_enabled:
@@ -440,9 +448,28 @@ class SecurityState:
                 source_signature,
             )
             key = fingerprint
-            if key in self.seen:
+            attack = (
+                attack_evidence.evidence("unknown", "analysis_budget")
+                if self.truncated
+                else attack_evidence.analyze(
+                    rule, sink["role"], value, marks, shell_dialect
+                )
+            )
+            previous = next(
+                (
+                    event
+                    for event in self.pending
+                    if event["finding_id"] == key
+                ),
+                None,
+            )
+            if key in self.seen and (
+                previous is None
+                or attack_evidence.rank({"attack_evidence": attack})
+                <= attack_evidence.rank(previous)
+            ):
                 return None
-            if len(self.pending) >= self.max_findings:
+            if previous is None and len(self.pending) >= self.max_findings:
                 self._limit("request_finding_limit")
                 return None
             self.seen.add(key)
@@ -468,7 +495,10 @@ class SecurityState:
                     "schema_version": 1,
                     "source": "beacon_security",
                     "event_name": "beacon.security.finding",
-                    "evidence_id": "ev-" + str(uuid.uuid4()),
+                    "evidence_id": previous["evidence_id"]
+                    if previous
+                    else "ev-" + str(uuid.uuid4()),
+                    "attack_evidence": attack,
                     "finding_id": fingerprint,
                     "fingerprint_version": 1,
                     "rule": rule,
@@ -512,7 +542,10 @@ class SecurityState:
                 },
                 self.identity,
             )
-            self.pending.append(event)
+            if previous is None:
+                self.pending.append(event)
+            else:
+                self.pending[self.pending.index(previous)] = event
             return event
 
     def diagnostics(self):
@@ -548,5 +581,6 @@ class SecurityState:
             self.nodes.clear()
             self.sources.clear()
             self.pending.clear()
+            self.seen.clear()
             self.ambiguous.clear()
             self.ambiguous_sources.clear()
