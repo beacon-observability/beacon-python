@@ -48,6 +48,8 @@ The following environment variables are supported:
 * ``OTEL_PROFILING_EXPORT_INTERVAL`` (defaults to 60 seconds and can be
   overridden by the ``Profiler(export_interval=...)`` argument)
 * ``OTEL_PROFILING_MAX_FRAMES``
+* ``OTEL_PROFILING_MAX_BUFFER_SAMPLES`` (defaults to 10000)
+* ``OTEL_PROFILING_MAX_BUFFER_BYTES`` (defaults to 8388608 accounted bytes)
 * ``OTEL_PROFILING_INCLUDE_TRACE_CONTEXT``
 * ``OTEL_PROFILING_EXCEPTION_ENABLED``
 * ``OTEL_PROFILING_EXCEPTION_SAMPLING_INTERVAL``
@@ -84,6 +86,21 @@ is decided before stack walking and trace lookup; filename normalization
 uses a bounded cache. OTLP samples carry their interval as ``period`` and
 ``lock.sampling.interval``. Compatible pprof lock counts and durations are
 weighted by that interval; they are estimates when the interval exceeds 1.
+
+One profiler-wide budget covers raw samples in all collectors and the
+pending export buffer. Both limits also accept ``Profiler(max_buffer_samples=,
+max_buffer_bytes=)`` arguments. Excess samples are dropped, counted in
+``profiler.buffer_statistics``, and reported in a warning at flush. The next
+window can collect again after draining; delivery is bounded, not lossless.
+Retained samples preserve their individual timestamps, trace identity, values,
+and CPU deltas. Immutable stack frames use a bounded cache.
+
+Byte accounting conservatively includes sample metadata and frame references,
+including shared objects. It bounds queued raw data, not total process RSS;
+heap snapshots and serialization also need temporary memory. Capture/build/
+export work is excluded from the profiler's own exception and lock collection.
+``memory_interval=0`` keeps manual memory capture available on each call;
+periodic memory scheduling uses the positive export cadence instead of spinning.
 
 Examples
 --------
