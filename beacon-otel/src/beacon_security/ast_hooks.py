@@ -399,6 +399,10 @@ def _caller_sensitive_call(function, logging_call, /, *args, **kwargs):
 
 
 def call_target(function, location, awaited=False):
+    # Outside a collecting request the original callable executes directly in
+    # the business frame, without allocating an observation wrapper.
+    if runtime.current_state() is None:
+        return function
     actual = function
     while type(actual) is partial:
         actual = actual.func

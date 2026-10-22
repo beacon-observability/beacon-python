@@ -65,6 +65,10 @@ helper frames when interpreting `stacklevel`, including aliases and partials.
 Custom frame-inspecting callables and exception tracebacks can still expose
 the call observation helpers.
 
+Collection eligibility (the enabled flag, include selector and runtime support)
+is captured when a Security runtime starts; environment changes require a
+restart. Control-file pause/resume and verification runs remain dynamic.
+
 Runtime SBOM collection is enabled by default only after Security itself is
 enabled. Findings and SBOM snapshots use the existing OpenTelemetry Logs
 pipeline. Local files are off by default:
