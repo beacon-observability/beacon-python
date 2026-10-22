@@ -556,16 +556,6 @@ def _build_profiled_async_class(
                 **kwargs,
             )
 
-        async def __aenter__(self, *args: Any, **kwargs: Any) -> Any:
-            return await _acquire_async_primitive(
-                self._otel_profiled_state,
-                lambda *inner_args, **inner_kwargs: original_class.__aenter__(
-                    self, *inner_args, **inner_kwargs
-                ),
-                *args,
-                **kwargs,
-            )
-
         def release(self, *args: Any, **kwargs: Any) -> Any:
             return _release_sync_primitive(
                 self._otel_profiled_state,
@@ -576,15 +566,8 @@ def _build_profiled_async_class(
                 **kwargs,
             )
 
-        async def __aexit__(self, *args: Any, **kwargs: Any) -> Any:
-            return await _release_async_primitive(
-                self._otel_profiled_state,
-                lambda *inner_args, **inner_kwargs: original_class.__aexit__(
-                    self, *inner_args, **inner_kwargs
-                ),
-                *args,
-                **kwargs,
-            )
+        # Inherit the native async context-manager methods. They dispatch to
+        # self.acquire/self.release, which are already observed above.
 
         if _supports_wait_method(original_class):
 
@@ -692,27 +675,6 @@ def _wait_sync_primitive(
                 max_frames=state.collector.max_frames
             ),
         )
-    return result
-
-
-async def _release_async_primitive(
-    state: _ProfiledPrimitiveState,
-    inner_func: Callable[..., Any],
-    *args: Any,
-    **kwargs: Any,
-) -> Any:
-    acquired_time_ns = state.acquired_time_ns
-    state.acquired_time_ns = None
-    result = await inner_func(*args, **kwargs)
-    if acquired_time_ns is None or state.is_internal:
-        return result
-
-    state.collector.record_release(
-        state,
-        start_ns=acquired_time_ns,
-        end_ns=monotonic_ns(),
-        frames=_capture_current_frames(max_frames=state.collector.max_frames),
-    )
     return result
 
 
