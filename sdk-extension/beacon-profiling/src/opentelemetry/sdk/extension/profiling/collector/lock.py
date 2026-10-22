@@ -170,10 +170,15 @@ class _PrimitiveCollector:
         if not self._started:
             return
 
+        # Existing proxies outlive the factory patch. Disable and drain under
+        # the same lock used to append samples so an in-flight append cannot
+        # leave retained samples after stop returns.
+        with self._buffer_lock:
+            self._started = False
+            self._buffer.clear()
         for module, original_target in reversed(self._original_targets):
             setattr(module, self.PATCHED_LOCK_NAME, original_target)
         self._original_targets = []
-        self._started = False
 
     def capture(self) -> list[CapturedSample]:
         with self._buffer_lock:
@@ -282,7 +287,7 @@ class _PrimitiveCollector:
         value: int,
         frames: tuple[CapturedFrame, ...],
     ) -> None:
-        if not frames:
+        if not self._started or not frames:
             return
 
         current_thread = threading.current_thread()
@@ -332,7 +337,8 @@ class _PrimitiveCollector:
         )
 
         with self._buffer_lock:
-            self._buffer.append(sample)
+            if self._started:
+                self._buffer.append(sample)
 
 
 class ThreadingLockCollector(_PrimitiveCollector):
