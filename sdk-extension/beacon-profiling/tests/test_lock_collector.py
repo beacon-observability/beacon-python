@@ -13,7 +13,9 @@ from opentelemetry.sdk.trace import TracerProvider
 
 
 def test_threading_lock_collector_patches_and_restores_lock_factory():
-    collector = ThreadingLockCollector(context_bridge=ContextBridge())
+    collector = ThreadingLockCollector(
+        context_bridge=ContextBridge(), sampling_interval=1
+    )
     original_lock_factory = threading.Lock
 
     collector.start()
@@ -28,7 +30,9 @@ def test_threading_lock_collector_patches_and_restores_lock_factory():
 
 
 def test_threading_rlock_collector_patches_and_restores_lock_factory():
-    collector = ThreadingRLockCollector(context_bridge=ContextBridge())
+    collector = ThreadingRLockCollector(
+        context_bridge=ContextBridge(), sampling_interval=1
+    )
     original_lock_factory = threading.RLock
 
     collector.start()
@@ -44,10 +48,10 @@ def test_threading_rlock_collector_patches_and_restores_lock_factory():
 
 def test_threading_semaphore_collectors_patch_and_restore_classes():
     semaphore_collector = ThreadingSemaphoreCollector(
-        context_bridge=ContextBridge()
+        context_bridge=ContextBridge(), sampling_interval=1
     )
     bounded_collector = ThreadingBoundedSemaphoreCollector(
-        context_bridge=ContextBridge()
+        context_bridge=ContextBridge(), sampling_interval=1
     )
     original_semaphore_class = threading.Semaphore
     original_bounded_semaphore_class = threading.BoundedSemaphore
@@ -72,7 +76,9 @@ def test_threading_semaphore_collectors_patch_and_restore_classes():
 
 
 def test_threading_condition_collector_patches_and_restores_class():
-    collector = ThreadingConditionCollector(context_bridge=ContextBridge())
+    collector = ThreadingConditionCollector(
+        context_bridge=ContextBridge(), sampling_interval=1
+    )
     original_condition_class = threading.Condition
 
     collector.start()
@@ -92,6 +98,7 @@ def test_threading_lock_collector_captures_wait_and_hold_duration():
     tracer = TracerProvider().get_tracer("test")
     collector = ThreadingLockCollector(
         context_bridge=bridge,
+        sampling_interval=1,
         max_frames=32,
     )
 
@@ -172,6 +179,7 @@ def test_threading_rlock_collector_captures_wait_and_hold_duration():
     tracer = TracerProvider().get_tracer("test")
     collector = ThreadingRLockCollector(
         context_bridge=bridge,
+        sampling_interval=1,
         max_frames=32,
     )
 
@@ -252,6 +260,7 @@ def test_threading_semaphore_collector_captures_wait_and_hold_duration():
     tracer = TracerProvider().get_tracer("test")
     collector = ThreadingSemaphoreCollector(
         context_bridge=bridge,
+        sampling_interval=1,
         max_frames=32,
     )
 
@@ -334,6 +343,7 @@ def test_threading_condition_collector_captures_wait_and_hold_duration():
     tracer = TracerProvider().get_tracer("test")
     collector = ThreadingConditionCollector(
         context_bridge=bridge,
+        sampling_interval=1,
         max_frames=32,
     )
 
@@ -416,6 +426,7 @@ def test_threading_condition_collector_captures_wait_duration():
     tracer = TracerProvider().get_tracer("test")
     collector = ThreadingConditionCollector(
         context_bridge=bridge,
+        sampling_interval=1,
         max_frames=32,
     )
 
