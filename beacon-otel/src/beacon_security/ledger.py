@@ -166,6 +166,7 @@ class RuntimeLedger:
         self._runs: OrderedDict[str, dict[str, Any]] = OrderedDict()
         self._counts: OrderedDict[str, int] = OrderedDict()
         self._policy: dict[str, Any] = {}
+        self._configuration = self._probe_coverage_configuration()
         self._sbom: dict[str, Any] = {"status": "initializing"}
         self._last_delivery: dict[str, Any] = {}
 
@@ -211,9 +212,7 @@ class RuntimeLedger:
         # Policies are replaced atomically and never mutated after publication.
         policy = self._policy
         try:
-            return config.collection_configured() and not bool(
-                policy.get("paused")
-            )
+            return self._configuration[0] and not bool(policy.get("paused"))
         except BaseException:
             return False
 
@@ -832,8 +831,11 @@ class RuntimeLedger:
     def _increment_count(self, name: str, amount: int = 1) -> None:
         self._counts[name] = self._counts.get(name, 0) + _number(amount)
 
+    def _coverage_configuration(self) -> tuple[bool, str]:
+        return self._configuration
+
     @staticmethod
-    def _coverage_configuration() -> tuple[bool, str]:
+    def _probe_coverage_configuration() -> tuple[bool, str]:
         """Return the configured coverage gate and its stable diagnostic status."""
 
         try:

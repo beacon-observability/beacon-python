@@ -77,9 +77,7 @@ def test_runtime_surface_exposes_owned_components(monkeypatch, tmp_path):
     assert hasattr(components, "profile")
 
 
-def test_live_configuration_changes_gate_active_collection(
-    monkeypatch, tmp_path
-):
+def test_collection_gate_caches_startup_configuration(monkeypatch, tmp_path):
     from beacon_security import config
 
     runtime = load_runtime(monkeypatch, tmp_path)
@@ -97,11 +95,11 @@ def test_live_configuration_changes_gate_active_collection(
         )
         assert not config.included("other_app.handlers")
         monkeypatch.setenv("BEACON_SECURITY_PYTHON_INCLUDE", "")
-        assert runtime.current_state() is None
+        assert runtime.current_state() is state
         monkeypatch.setenv("BEACON_SECURITY_PYTHON_INCLUDE", "security_sample")
         assert runtime.current_state() is state
         monkeypatch.setenv("BEACON_SECURITY_ENABLED", "false")
-        assert runtime.current_state() is None
+        assert runtime.current_state() is state
         monkeypatch.setenv("BEACON_SECURITY_ENABLED", "true")
         assert runtime.current_state() is state
         with monkeypatch.context() as probe:
@@ -110,7 +108,11 @@ def test_live_configuration_changes_gate_active_collection(
                 raise RuntimeError("runtime probe unavailable")
 
             probe.setattr(config, "supported_runtime", unavailable)
-            assert runtime.current_state() is None
+            assert runtime.current_state() is state
+            from beacon_security.ledger import RuntimeLedger
+
+            fresh = RuntimeLedger({}, "unavailable", tmp_path / "unavailable")
+            assert not fresh.enabled()
         assert runtime.current_state() is state
     finally:
         runtime.detach_state(token)

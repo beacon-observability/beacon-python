@@ -15,6 +15,8 @@ from .structured_models import (
 
 
 def input_marks(state, values):
+    if not state.objects and not state.source_count:
+        return ()
     result = []
     pending = [(value, 0) for value in values]
     seen = set()
@@ -153,6 +155,12 @@ def coroutine_function(function):
 
 def before(state, function, args, kwargs):
     name, module, receiver = describe(function)
+    if (
+        not state.objects
+        and not state.source_count
+        and not (type(receiver) in (str, bytes, bytearray) and name == "join")
+    ):
+        return None, args
     receiver_marks = state.marks(receiver)
     marks = input_marks(state, (receiver, *args, *kwargs.values()))
     parts = url_parts(state, receiver)
