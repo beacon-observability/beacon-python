@@ -74,6 +74,13 @@ Service metadata should be configured with standard OpenTelemetry
 resource settings such as ``OTEL_SERVICE_NAME`` and
 ``OTEL_RESOURCE_ATTRIBUTES``.
 
+Trace-correlated samples retain the current span ID separately from the
+local root span ID. Endpoint and span kind come from that local root, so a
+database child span does not replace the request endpoint. Root identity
+travels with the OpenTelemetry context across tasks and propagated threads.
+If profiling starts inside a pre-existing local child span whose root was
+not observed, the root and endpoint remain unknown.
+
 Examples
 --------
 
