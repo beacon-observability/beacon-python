@@ -6,9 +6,11 @@ import queue
 import sys
 import threading
 import time
+from collections import deque
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -39,6 +41,100 @@ class _Entry:
     event: dict[str, Any]
     span_context: Any
     evidence: bool
+    priority: int = dataclass_field(init=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "priority", _priority(self.event))
+
+
+def _priority(event: Mapping[str, Any]) -> int:
+    attack = event.get("attack_evidence")
+    if event.get("event_name") == "beacon.security.finding" and (
+        isinstance(attack, Mapping) and attack.get("status") == "suspected"
+    ):
+        return 2
+    name = str(event.get("event_name", ""))
+    if name in {
+        "beacon.security.collection.incomplete",
+        "beacon.security.snapshot.failed",
+        "beacon.security.export.dropped",
+        "beacon.security.export.truncated",
+    } or name.startswith("beacon.security.instrumentation."):
+        return 1
+    return 0
+
+
+class _SecurityQueue(queue.Queue):
+    """FIFO within each priority; only higher priority can evict a queued entry."""
+
+    def _init(self, maxsize: int) -> None:
+        self.queue = (deque(), deque(), deque())
+
+    def _qsize(self) -> int:
+        return sum(map(len, self.queue))
+
+    def _put(self, entry: _Entry) -> None:
+        self.queue[entry.priority].append(entry)
+
+    def _get(self) -> _Entry:
+        for entries in reversed(self.queue):
+            if entries:
+                return entries.popleft()
+        raise queue.Empty
+
+    def offer(self, entry: _Entry) -> _Entry | None:
+        with self.not_full:
+            evicted = None
+            if self.maxsize > 0 and self._qsize() >= self.maxsize:
+                for priority in range(entry.priority):
+                    if self.queue[priority]:
+                        evicted = self.queue[priority].popleft()
+                        break
+                if evicted is None:
+                    raise queue.Full
+            self._put(entry)
+            if evicted is None:
+                self.unfinished_tasks += 1
+            self.not_empty.notify()
+            return evicted
+
+
+class _PriorityBudget:
+    """Reserve 20% each for attack evidence and coverage diagnostics.
+
+    Higher priorities may use unused lower pools, never the reverse. Event and
+    byte limits remain hard totals, even for delivery-loss diagnostics.
+    """
+
+    events: list[int]
+    bytes: list[int]
+
+    def __init__(self, events: int, size: int) -> None:
+        self.events = self._pools(events)
+        self.bytes = self._pools(size)
+
+    @staticmethod
+    def _pools(limit: int) -> list[int]:
+        attack = min(limit, max(1, limit // 5))
+        diagnostic = min(limit - attack, max(1, limit // 5))
+        return [limit - attack - diagnostic, diagnostic, attack]
+
+    @staticmethod
+    def _consume(pools: list[int], priority: int, amount: int) -> None:
+        for index in range(priority, -1, -1):
+            take = min(pools[index], amount)
+            pools[index] -= take
+            amount -= take
+
+    def admit(self, priority: int, size: int) -> bool:
+        if (
+            sum(self.events[: priority + 1]) < 1
+            or sum(self.bytes[: priority + 1]) < size
+        ):
+            return False
+        self._consume(self.events, priority, 1)
+        self._consume(self.bytes, priority, size)
+        return True
 
 
 class Exporter:
@@ -50,7 +146,7 @@ class Exporter:
         self.output = Path(output).expanduser().absolute()
         self.ledger = RuntimeLedger(self.identity, self.profile, self.output)
 
-        self._security_queue: queue.Queue[_Entry] = queue.Queue(
+        self._security_queue = _SecurityQueue(
             maxsize=config.limit("beacon.security.export.queue.size", 1024)
         )
         self._sbom_queue: queue.Queue[_Entry] = queue.Queue(
@@ -159,7 +255,13 @@ class Exporter:
             self._loss(channel + ".closed", copied)
             return
         try:
-            target.put_nowait(_Entry(copied, frozen_context, bool(evidence)))
+            entry = _Entry(copied, frozen_context, bool(evidence))
+            if channel == "security":
+                evicted = self._security_queue.offer(entry)
+                if evicted is not None:
+                    self._loss("security.priority_evicted", evicted.event)
+            else:
+                target.put_nowait(entry)
         except queue.Full:
             self._loss(channel + ".queue_full", copied)
         except BaseException:
@@ -359,6 +461,7 @@ class Exporter:
         second = 0
         events = 0
         bytes_used = 0
+        priority_budget = _PriorityBudget(events_limit, bytes_limit)
         while self._running or not channel_queue.empty():
             try:
                 entry = channel_queue.get(timeout=0.1)
@@ -370,6 +473,9 @@ class Exporter:
                     second = now_second
                     events = 0
                     bytes_used = 0
+                    priority_budget = _PriorityBudget(
+                        events_limit, bytes_limit
+                    )
                 encoded, truncated = self._encode_record_result(entry.event)
                 if truncated:
                     self._record_record_truncation(entry.event, channel)
@@ -377,9 +483,21 @@ class Exporter:
                     "beacon.security.export.dropped",
                     "beacon.security.sbom.export.dropped",
                 }
-                if not loss_diagnostic and (
-                    events >= events_limit
-                    or bytes_used + len(encoded) > bytes_limit
+                if channel == "security" and not priority_budget.admit(
+                    entry.priority, len(encoded)
+                ):
+                    self._count(
+                        f"security.priority_{entry.priority}.budget_exceeded"
+                    )
+                    self._loss("security.budget_exceeded", entry.event)
+                    continue
+                if (
+                    channel != "security"
+                    and not loss_diagnostic
+                    and (
+                        events >= events_limit
+                        or bytes_used + len(encoded) > bytes_limit
+                    )
                 ):
                     if channel != "sbom" or len(encoded) > bytes_limit:
                         self._loss(channel + ".budget_exceeded", entry.event)

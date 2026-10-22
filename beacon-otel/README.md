@@ -1,18 +1,18 @@
 # Beacon Python
 
 `beacon-otel` is the main Beacon Python installation package. The current stable
-release is `1.2.0`.
+release is `1.2.1`.
 
 Install the main package together with the auto-instrumentation plugins required by your framework. For example, a FastAPI application can install the current stable version with:
 
 ```bash
-pip install 'beacon-otel[fastapi]==1.2.0'
+pip install 'beacon-otel[fastapi]==1.2.1'
 ```
 
 To enable profiling, install:
 
 ```bash
-pip install 'beacon-otel[fastapi,profiling]==1.2.0'
+pip install 'beacon-otel[fastapi,profiling]==1.2.1'
 ```
 
 Activate the virtual environment where Beacon is installed, configure the OTLP endpoint, and then start the application. You can also pass the full path of an executable in that virtual environment after `beacon`:
@@ -58,6 +58,22 @@ included application modules and excludes the standard library, OpenTelemetry,
 Beacon Security itself, and explicitly configured prefixes. Findings are
 bounded modeled-flow observations or candidate risks, not confirmed
 vulnerability reports.
+
+Call rewriting preserves the caller module for standard-library namedtuple,
+typing and Enum factories. Standard logging and `warnings.warn` ignore Security
+helper frames when interpreting `stacklevel`, including aliases and partials.
+Custom frame-inspecting callables and exception tracebacks can still expose
+the call observation helpers.
+
+Collection eligibility (the enabled flag, include selector and runtime support)
+is captured when a Security runtime starts; environment changes require a
+restart. Control-file pause/resume and verification runs remain dynamic.
+
+String and bytes `+=` propagation includes variable, attribute and subscript
+targets. Target reads, right-hand expressions and writes retain native order;
+setters can observe the propagated marks. Generator suspension in a right-hand
+expression reports `generator_iadd_propagation`; marked inputs to custom
+`__iadd__` implementations report `unmodeled_iadd`.
 
 Runtime SBOM collection is enabled by default only after Security itself is
 enabled. Findings and SBOM snapshots use the existing OpenTelemetry Logs
@@ -105,6 +121,18 @@ requests retain their own `evidence_id` (`occurrence_id`) and trace/span IDs whi
 sharing the stable `finding_id`. Occurrences without a trace are also exported.
 A trace ID does not guarantee that a receiver retained the trace.
 
+Security delivery prioritizes suspected attack evidence, then coverage/delivery
+diagnostics, then ordinary occurrences. A higher-priority arrival can evict the
+oldest queued record of a lower priority; equal-priority records remain FIFO.
+Within the existing per-second event and byte limits, 20% is reserved for attack
+evidence and 20% for diagnostics. Higher priorities may use unused lower pools.
+Each reserve is at least one event/byte when capacity permits; very small limits
+can leave no ordinary capacity. A record larger than its available byte pools
+can still be dropped. Loss diagnostics also consume the Security budget.
+`security.priority_evicted`, `security.queue_full`, `security.budget_exceeded`
+and per-priority budget counters expose losses. Individual occurrence and trace
+identities are retained; delivery remains bounded best effort.
+
 `BEACON_SECURITY_FINDINGS_SAMPLE_SECONDS` (default `300`) limits full-evidence
 sampling, independently of occurrence delivery and OpenTelemetry trace sampling.
 Lightweight occurrences have `evidence_sampled=false`, a bounded
@@ -119,6 +147,17 @@ The representative snapshot can describe an earlier request than `last_trace_id`
 Queues, rate limits, and byte budgets still bound export; health counters expose
 loss. Very small byte limits can produce `beacon.security.export.truncated`
 envelopes. Occurrence export can increase log volume and is not durable delivery.
+
+### Request body tracking budgets
+
+Raw request-body byte buffers have a separate reservation inside the existing
+request/process tracking limits. By default they may use one quarter of the
+request byte and object budgets, leaving capacity for parsed JSON/form fields.
+Set `BEACON_SECURITY_MAX_BODY_BUFFER_BYTES` to adjust the raw byte reservation
+(at most the request's total byte limit). Oversized/excess raw buffers are not
+retained and produce a `raw_body_buffer_budget` collection gap; later parsed
+fields can still be tracked and analyzed. Raw-body coverage is therefore
+bounded explicitly, and unchanged request/process memory limits still apply.
 
 ### Request-specific attack evidence
 
@@ -137,6 +176,12 @@ comments. This is not a SQL parser or complete dialect implementation. Other
 dialects, backslash/dollar quoting, unsupported syntax, imprecise ranges, and
 inputs exceeding 8192 code points or 64 marks retain uncertainty. Fixed SQL
 parameter binding remains separate from untrusted dynamic templates.
+Within the supported subset, a tainted quote that closes a fixed quoted
+region (or a fixed quote that closes a tainted region) is structural evidence.
+Doubled quote escapes and ordinary values inside fixed quotes are not promoted
+on that basis. Placeholder dialects such as `%s`, `%(name)s`, and `:name`
+are currently outside this lexical subset and remain `unknown`; bound values
+in a fixed SQL template remain separate from SQL-template pollution.
 
 The shell subset supports simple POSIX `sh`, `bash`, `dash`, `ksh`, and `zsh`
 commands, quoting, escapes, and control separators. Expansion, redirection,

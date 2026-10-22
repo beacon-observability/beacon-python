@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Protocol
 
 
@@ -23,6 +24,17 @@ class CapturedFrame:
     function: str
     filename: str
     lineno: int
+
+
+@lru_cache(maxsize=4096)
+def _cached_frame(function: str, filename: str, lineno: int) -> CapturedFrame:
+    return CapturedFrame(function, filename, lineno)
+
+
+def captured_frame(function: str, filename: str, lineno: int) -> CapturedFrame:
+    if len(function) <= 512 and len(filename) <= 2048:
+        return _cached_frame(function, filename, lineno)
+    return CapturedFrame(function, filename, lineno)
 
 
 @dataclass(frozen=True, slots=True)

@@ -109,6 +109,7 @@ def lexical(
             return evidence("unknown", "taint_imprecise")
         tainted[mark.start : mark.end] = b"\x01" * (mark.end - mark.start)
     quote = ""
+    quote_start = 0
     suspected = False
     identifier = False
     command_start = True
@@ -135,6 +136,14 @@ def lexical(
                 if not shell and following == quote:
                     index += 1
                 else:
+                    if not shell:
+                        # A delimiter from untrusted input closing a fixed
+                        # literal (or the reverse) crosses the template/data
+                        # boundary. A wholly tainted quoted literal and
+                        # doubled SQL escapes do not establish that escape.
+                        suspected |= bool(tainted[index]) != bool(
+                            tainted[quote_start]
+                        )
                     quote = ""
             elif not shell and quote == '"' and tainted[index]:
                 identifier = True
@@ -143,6 +152,7 @@ def lexical(
         if char in "'\"":
             command_start = False
             quote = char
+            quote_start = index
             index += 1
             continue
         if shell:
@@ -165,6 +175,12 @@ def lexical(
                     return evidence("unknown", "shell_syntax_unsupported")
                 command_start = False
         else:
+            # Skip whitespace before looking back for a numeric sign. Only
+            # the next token needs that scan, so each whitespace run is
+            # traversed at most twice rather than once per whitespace byte.
+            if char.isspace():
+                index += 1
+                continue
             if (char == "-" and following == "-") or (
                 char == "/" and following == "*"
             ):

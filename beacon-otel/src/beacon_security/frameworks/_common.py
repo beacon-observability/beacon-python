@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import importlib
 import inspect
 import threading
@@ -975,6 +976,18 @@ def asgi_message_ends_response(message: Any) -> bool:
     return False
 
 
+def _receive_cancelled(error: BaseException) -> bool:
+    if isinstance(error, asyncio.CancelledError):
+        return True
+    try:
+        # AnyIO's Trio backend has its own cancellation class. Query it only
+        # on the exceptional path; AnyIO remains an optional dependency.
+        anyio = importlib.import_module("anyio")
+        return isinstance(error, anyio.get_cancelled_exc_class())
+    except Exception:
+        return False
+
+
 def asgi_receive_wrapper(receive: Any, session: Session | None = None) -> Any:
     async def wrapped() -> Any:
         try:
@@ -992,7 +1005,11 @@ def asgi_receive_wrapper(receive: Any, session: Session | None = None) -> Any:
                     finish(session, None, detach_context=False)
             return result
         except BaseException as error:
-            finish(session, error, detach_context=False)
+            # A disconnected probe or wait_for timeout cancels only this
+            # receive, not the ASGI application. The outer application hook
+            # still owns cleanup if its task is actually cancelled.
+            if not _receive_cancelled(error):
+                finish(session, error, detach_context=False)
             raise
 
     return wrapped

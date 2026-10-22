@@ -14,9 +14,12 @@
 
 from __future__ import annotations
 
+import logging
 from threading import Event, Lock, Thread
 from time import monotonic
 from typing import Callable
+
+_logger = logging.getLogger(__name__)
 
 
 class ProfileScheduler:
@@ -64,10 +67,20 @@ class ProfileScheduler:
         next_flush = monotonic() + self._export_interval
         while not self._stop_event.is_set():
             started = monotonic()
-            self._capture()
+            try:
+                self._capture()
+            except Exception:
+                _logger.exception(
+                    "Profile capture failed; sampling will continue"
+                )
             now = monotonic()
             if now >= next_flush:
-                self._flush()
+                try:
+                    self._flush()
+                except Exception:
+                    _logger.exception(
+                        "Profile export failed; sampling will continue"
+                    )
                 next_flush = monotonic() + self._export_interval
             elapsed = monotonic() - started
             wait_for = max(0.0, self._sample_interval - elapsed)

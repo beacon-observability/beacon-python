@@ -1,7 +1,7 @@
 Beacon Profiling for Python
 ===========================
 
-The current stable version is ``beacon-profiling==1.1.0``.
+The current stable version is ``beacon-profiling==1.2.1``.
 
 This package provides a Python profiling runtime for OpenTelemetry
 auto-instrumentation. The current implementation exports profiles via OTLP
@@ -16,6 +16,13 @@ or a compatible pprof endpoint and supports multiple collector types:
 
 Handled-exception collection requires Python ``sys.monitoring`` (Python
 3.12+); on Python 3.10/3.11 the other collectors remain available.
+
+Trace-correlated samples retain the current span ID separately from the
+local root span ID. Endpoint and span kind come from that local root, so a
+database child span does not replace the request endpoint. Root identity
+travels with the OpenTelemetry context across tasks and propagated threads.
+If profiling starts inside a pre-existing local child span whose root was
+not observed, the root and endpoint remain unknown.
 
 Usage
 -----
@@ -48,11 +55,17 @@ The following environment variables are supported:
 * ``OTEL_PROFILING_EXPORT_INTERVAL`` (defaults to 60 seconds and can be
   overridden by the ``Profiler(export_interval=...)`` argument)
 * ``OTEL_PROFILING_MAX_FRAMES``
+* ``OTEL_PROFILING_MAX_BUFFER_SAMPLES`` (defaults to 10000)
+* ``OTEL_PROFILING_MAX_BUFFER_BYTES`` (defaults to 8388608 accounted bytes)
 * ``OTEL_PROFILING_INCLUDE_TRACE_CONTEXT``
 * ``OTEL_PROFILING_EXCEPTION_ENABLED``
 * ``OTEL_PROFILING_EXCEPTION_SAMPLING_INTERVAL``
 * ``OTEL_PROFILING_EXCEPTION_COLLECT_MESSAGE``
 * ``OTEL_PROFILING_LOCK_ENABLED``
+* ``OTEL_PROFILING_LOCK_SAMPLING_INTERVAL`` (defaults to 100; one in N
+  short acquisitions is sampled; 1 records every operation)
+* ``OTEL_PROFILING_LOCK_MIN_DURATION_NS`` (defaults to 1000000; operations
+  at or above this duration are recorded without probabilistic sampling)
 * ``OTEL_PROFILING_MEMORY_ENABLED``
 * ``OTEL_PROFILING_MEMORY_INTERVAL`` (defaults to the profile export interval
   and can be overridden by the ``Profiler(memory_interval=...)`` argument)
@@ -67,12 +80,36 @@ The following environment variables are supported:
 * ``OTEL_EXPORTER_OTLP_PROFILES_CLIENT_KEY``
 * ``OTEL_EXPORTER_OTLP_PROFILES_CLIENT_CERTIFICATE``
 * ``OTEL_PROFILING_PPROF_PATH``
+* ``OTEL_PROFILING_PPROF_MAX_FILES`` (HTTP upload local copies only; defaults
+  to 3 retained files per exporter instance)
 * ``OTEL_PROFILING_PPROF_UPLOAD_URL``
 * ``OTEL_PROFILING_PPROF_HEADERS``
 
 Service metadata should be configured with standard OpenTelemetry
 resource settings such as ``OTEL_SERVICE_NAME`` and
 ``OTEL_RESOURCE_ATTRIBUTES``.
+
+Short lock acquisition/hold pairs share one sampling decision. Slow holds
+and waits are retained even when their acquisition was not sampled. Sampling
+is decided before stack walking and trace lookup; filename normalization
+uses a bounded cache. OTLP samples carry their interval as ``period`` and
+``lock.sampling.interval``. Compatible pprof lock counts and durations are
+weighted by that interval; they are estimates when the interval exceeds 1.
+
+One profiler-wide budget covers raw samples in all collectors and the
+pending export buffer. Both limits also accept ``Profiler(max_buffer_samples=,
+max_buffer_bytes=)`` arguments. Excess samples are dropped, counted in
+``profiler.buffer_statistics``, and reported in a warning at flush. The next
+window can collect again after draining; delivery is bounded, not lossless.
+Retained samples preserve their individual timestamps, trace identity, values,
+and CPU deltas. Immutable stack frames use a bounded cache.
+
+Byte accounting conservatively includes sample metadata and frame references,
+including shared objects. It bounds queued raw data, not total process RSS;
+heap snapshots and serialization also need temporary memory. Capture/build/
+export work is excluded from the profiler's own exception and lock collection.
+``memory_interval=0`` keeps manual memory capture available on each call;
+periodic memory scheduling uses the positive export cadence instead of spinning.
 
 Examples
 --------
@@ -104,7 +141,18 @@ copy:
 
     export OTEL_PROFILING_PPROF_UPLOAD_URL=http://localhost:9529/profiling/v1/input
     export OTEL_PROFILING_PPROF_HEADERS="X-API-Key:xxx"
+    export OTEL_PROFILING_PPROF_PATH=/tmp/otel-profile
     beacon python app.py
+
+HTTP upload does not write local files unless ``OTEL_PROFILING_PPROF_PATH``
+is set. An empty ``pprof_path`` argument disables copies even when that
+environment variable is set. Local write/cleanup failures are logged and do
+not prevent upload. Retention removes only files written by this exporter
+instance; it never scans or removes files owned by other processes. The
+file-only ``pprof`` exporter retains its existing output behavior.
+
+Capture and export exceptions are logged; subsequent scheduled captures
+and export attempts continue. Failed batches are not replayed automatically.
 
 When ``OTEL_PROFILING_EXPORTER`` is unset and
 ``OTEL_PROFILING_PPROF_UPLOAD_URL`` is configured, the runtime

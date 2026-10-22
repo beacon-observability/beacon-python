@@ -20,8 +20,8 @@ from threading import RLock, get_ident
 from typing import Callable, Optional
 
 import opentelemetry.context as context_api
-from opentelemetry.context import _RUNTIME_CONTEXT
-from opentelemetry.trace import INVALID_SPAN_CONTEXT, get_current_span
+from opentelemetry.context import _RUNTIME_CONTEXT, Context
+from opentelemetry.trace import INVALID_SPAN_CONTEXT, Span, get_current_span
 from opentelemetry.trace.span import SpanContext
 
 
@@ -38,6 +38,7 @@ class ContextBridge:
     def __init__(self) -> None:
         self._lock = RLock()
         self._started = False
+        self._root_key = context_api.create_key("beacon_profiling_local_root")
         self._span_metadata_by_thread: dict[int, SpanMetadata] = {}
         self._original_attach: Optional[Callable] = None
         self._original_detach: Optional[Callable] = None
@@ -55,6 +56,14 @@ class ContextBridge:
             original_detach = self._original_detach
 
             def attach_wrapper(context):
+                root = self._local_root(context)
+                if (
+                    context_api.get_value(self._root_key, context=context)
+                    is not root
+                ):
+                    context = context_api.set_value(
+                        self._root_key, root, context=context
+                    )
                 token = original_attach(context)
                 self._refresh_current_thread()
                 return token
@@ -146,17 +155,40 @@ class ContextBridge:
         with self._lock:
             if span_context.is_valid:
                 self._span_metadata_by_thread[thread_id] = (
-                    self._build_metadata(span, span_context)
+                    self._build_metadata(
+                        span, span_context, self._local_root(otel_context)
+                    )
                 )
             else:
                 self._span_metadata_by_thread.pop(thread_id, None)
 
-    def _build_metadata(self, span, span_context: SpanContext) -> SpanMetadata:
+    def _local_root(self, otel_context: Context | None) -> Span | None:
+        span = get_current_span(context=otel_context)
+        span_context = span.get_span_context()
+        if not span_context.is_valid or span_context.is_remote:
+            return None
+        root = context_api.get_value(self._root_key, context=otel_context)
+        if root is not None:
+            root_context = root.get_span_context()
+            if (
+                root_context.is_valid
+                and root_context.trace_id == span_context.trace_id
+            ):
+                return root
+        parent = getattr(span, "parent", None)
+        # If collection began inside an existing local child span, its root
+        # cannot be reconstructed from SpanContext alone. Keep it unknown
+        # instead of mislabelling that child as the root.
+        return span if parent is None or parent.is_remote else None
+
+    def _build_metadata(
+        self, span: Span, span_context: SpanContext, root: Span | None = None
+    ) -> SpanMetadata:
         trace_type_value = None
-        kind = getattr(span, "kind", None)
+        kind = getattr(root, "kind", None)
         if kind is not None:
             trace_type_value = kind.name
-        trace_endpoint = getattr(span, "name", None)
+        trace_endpoint = getattr(root, "name", None)
         instrumentation_scope = getattr(span, "instrumentation_scope", None)
         class_name = (
             instrumentation_scope.name
@@ -172,5 +204,7 @@ class ContextBridge:
             trace_type=trace_type_value,
             trace_endpoint=trace_endpoint,
             class_name=class_name,
-            local_root_span_id=span_context.span_id,
+            local_root_span_id=(
+                root.get_span_context().span_id if root is not None else None
+            ),
         )

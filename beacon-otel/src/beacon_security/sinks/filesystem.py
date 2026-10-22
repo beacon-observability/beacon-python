@@ -79,7 +79,10 @@ def _os_open_wrapper(wrapped, instance, args, kwargs):
 def _fspath_wrapper(wrapped, instance, args, kwargs):
     value = extract_arg(args, kwargs, 0, "path", None)
     result = wrapped(*args, **kwargs)
-    safe_observe(safe_propagate, result, (value,), "os.fspath", exact=True)
+    # str/bytes are already path representations. An identity conversion
+    # adds no information and must not consume a propagation node each time.
+    if result is not value:
+        safe_observe(safe_propagate, result, (value,), "os.fspath", exact=True)
     return result
 
 

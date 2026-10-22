@@ -19,7 +19,10 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 
 
-def test_profiler_exports_multiple_profile_types_end_to_end():
+def test_profiler_exports_multiple_profile_types_end_to_end(monkeypatch):
+    # This test requires every type in every run; sampling distribution and
+    # weighting are checked separately in test_lock_sampling.py.
+    monkeypatch.setenv("OTEL_PROFILING_LOCK_SAMPLING_INTERVAL", "1")
     received = {}
     ready = Event()
 

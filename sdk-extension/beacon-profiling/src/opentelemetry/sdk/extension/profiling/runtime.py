@@ -21,8 +21,12 @@ from os import environ
 from threading import Lock
 
 from opentelemetry.sdk.extension.profiling.collector.base import (
-    CapturedSample,
     Collector,
+)
+from opentelemetry.sdk.extension.profiling.collector.buffering import (
+    SampleBudget,
+    SampleBuffer,
+    suppress_collection,
 )
 from opentelemetry.sdk.extension.profiling.collector.exception import (
     ExceptionCollector,
@@ -105,6 +109,8 @@ class Profiler:
         memory_interval: float | None = None,
         memory_top_stats: int | None = None,
         memory_ignore_profiler: bool | None = None,
+        max_buffer_samples: int | None = None,
+        max_buffer_bytes: int | None = None,
     ) -> None:
         self._resource = resource
         self._sample_interval = sample_interval or float(
@@ -189,7 +195,11 @@ class Profiler:
         )
 
         self._buffer_lock = Lock()
-        self._samples: list[CapturedSample] = []
+        self._sample_budget = SampleBudget(
+            max_buffer_samples, max_buffer_bytes
+        )
+        self._samples = SampleBuffer(self._sample_budget)
+        self._reported_drops = 0
         self._atexit_registered = False
         self._manual_exporter = exporter is not None
         self._context_bridge = ContextBridge()
@@ -198,6 +208,7 @@ class Profiler:
                 context_bridge=self._context_bridge,
                 max_frames=self._max_frames,
                 include_trace_context=self._include_trace_context,
+                sample_budget=self._sample_budget,
             )
         ]
         if self._exception_enabled:
@@ -206,6 +217,7 @@ class Profiler:
                     context_bridge=self._context_bridge,
                     max_frames=self._max_frames,
                     include_trace_context=self._include_trace_context,
+                    sample_budget=self._sample_budget,
                     sampling_interval=self._exception_sampling_interval,
                     collect_message=self._exception_collect_message,
                 )
@@ -217,46 +229,55 @@ class Profiler:
                         context_bridge=self._context_bridge,
                         max_frames=self._max_frames,
                         include_trace_context=self._include_trace_context,
+                        sample_budget=self._sample_budget,
                     ),
                     ThreadingRLockCollector(
                         context_bridge=self._context_bridge,
                         max_frames=self._max_frames,
                         include_trace_context=self._include_trace_context,
+                        sample_budget=self._sample_budget,
                     ),
                     ThreadingSemaphoreCollector(
                         context_bridge=self._context_bridge,
                         max_frames=self._max_frames,
                         include_trace_context=self._include_trace_context,
+                        sample_budget=self._sample_budget,
                     ),
                     ThreadingBoundedSemaphoreCollector(
                         context_bridge=self._context_bridge,
                         max_frames=self._max_frames,
                         include_trace_context=self._include_trace_context,
+                        sample_budget=self._sample_budget,
                     ),
                     ThreadingConditionCollector(
                         context_bridge=self._context_bridge,
                         max_frames=self._max_frames,
                         include_trace_context=self._include_trace_context,
+                        sample_budget=self._sample_budget,
                     ),
                     AsyncioLockCollector(
                         context_bridge=self._context_bridge,
                         max_frames=self._max_frames,
                         include_trace_context=self._include_trace_context,
+                        sample_budget=self._sample_budget,
                     ),
                     AsyncioSemaphoreCollector(
                         context_bridge=self._context_bridge,
                         max_frames=self._max_frames,
                         include_trace_context=self._include_trace_context,
+                        sample_budget=self._sample_budget,
                     ),
                     AsyncioBoundedSemaphoreCollector(
                         context_bridge=self._context_bridge,
                         max_frames=self._max_frames,
                         include_trace_context=self._include_trace_context,
+                        sample_budget=self._sample_budget,
                     ),
                     AsyncioConditionCollector(
                         context_bridge=self._context_bridge,
                         max_frames=self._max_frames,
                         include_trace_context=self._include_trace_context,
+                        sample_budget=self._sample_budget,
                     ),
                 ]
             )
@@ -267,6 +288,7 @@ class Profiler:
                 capture_interval=self._memory_interval,
                 top_stats=self._memory_top_stats,
                 ignore_profiler=self._memory_ignore_profiler,
+                sample_budget=self._sample_budget,
             )
         self._active_collectors: list[Collector] = []
         self._active_memory_collector: Collector | None = None
@@ -281,7 +303,11 @@ class Profiler:
         self._memory_scheduler = ProfileScheduler(
             capture=self._capture_memory_once,
             flush=_noop,
-            sample_interval=self._memory_interval,
+            sample_interval=(
+                self._memory_interval
+                if self._memory_interval > 0
+                else max(self._export_interval, self._sample_interval, 0.001)
+            ),
             export_interval=self._export_interval,
         )
         self._started = False
@@ -316,23 +342,39 @@ class Profiler:
                 if self._atexit_registered:
                     self._unregister_atexit()
                 return
+            actions = [
+                self._scheduler.stop,
+                self._memory_scheduler.stop,
+                self._scheduler.join,
+                self._memory_scheduler.join,
+            ]
+            if flush:
+                actions.append(self.flush)
+            actions.extend(
+                (
+                    self._stop_collectors,
+                    self._clear_samples,
+                    self._context_bridge.stop,
+                )
+            )
+            if self._exporter is not None:
+                actions.append(self._exporter.shutdown)
+            failure: BaseException | None = None
             try:
-                self._scheduler.stop()
-                self._memory_scheduler.stop()
-                self._scheduler.join()
-                self._memory_scheduler.join()
-                if flush:
-                    self.flush()
-                self._stop_collectors()
-                self._context_bridge.stop()
-                if self._exporter is not None:
-                    self._exporter.shutdown()
+                for action in actions:
+                    try:
+                        action()
+                    except BaseException as error:
+                        if failure is None:
+                            failure = error
+            finally:
                 self._started = False
                 if self.__class__._active_instance is self:
                     self.__class__._active_instance = None
-            finally:
                 if self._atexit_registered:
                     self._unregister_atexit()
+            if failure is not None:
+                raise failure
 
     def capture_once(self) -> None:
         collectors = list(self._active_collectors)
@@ -348,22 +390,36 @@ class Profiler:
             return
         self._capture_collectors([self._active_memory_collector])
 
+    @property
+    def buffer_statistics(self) -> dict[str, int]:
+        return self._sample_budget.snapshot()
+
+    @suppress_collection()
     def _capture_collectors(self, collectors: list[Collector]) -> None:
-        captured: list[CapturedSample] = []
         for collector in collectors:
             try:
-                captured.extend(collector.capture())
+                captured = collector.capture()
+                with self._buffer_lock:
+                    self._samples.extend(captured)
             except Exception:
                 _logger.exception(
                     "Failed to capture samples from collector %s",
                     collector.__class__.__name__,
                 )
-        if not captured:
-            return
-        with self._buffer_lock:
-            self._samples.extend(captured)
 
+    def _clear_samples(self) -> None:
+        with self._buffer_lock:
+            self._samples.clear()
+
+    @suppress_collection()
     def flush(self) -> None:
+        drops = self.buffer_statistics["dropped_samples"]
+        if drops > self._reported_drops:
+            _logger.warning(
+                "Dropped %d profile samples: raw buffer budget exhausted",
+                drops - self._reported_drops,
+            )
+            self._reported_drops = drops
         if self._exporter is None:
             with self._buffer_lock:
                 self._samples.clear()
@@ -372,8 +428,7 @@ class Profiler:
         with self._buffer_lock:
             if not self._samples:
                 return
-            batch = self._samples
-            self._samples = []
+            batch = self._samples.drain()
 
         resource = self._resolve_resource()
         start_time_unix_nano = min(
@@ -496,7 +551,9 @@ class Profiler:
         self.__class__._active_lock = Lock()
         self.__class__._active_instance = None
         self._buffer_lock = Lock()
-        self._samples = []
+        self._sample_budget.reset_after_fork()
+        self._samples = SampleBuffer(self._sample_budget)
+        self._reported_drops = 0
         self._active_collectors = []
         self._active_memory_collector = None
         self._started = False

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import contextvars
 import inspect
 from typing import Any
@@ -22,6 +23,9 @@ from ._common import (
 _DJANGO_SQL_MARK_STACK: contextvars.ContextVar[tuple[tuple[Any, ...], ...]] = (
     contextvars.ContextVar("beacon_security_django_sql_marks", default=())
 )
+_DRIVER_CALLS: contextvars.ContextVar[tuple[tuple[Any, str], ...]] = (
+    contextvars.ContextVar("beacon_security_sql_driver_calls", default=())
+)
 
 
 _SQL_PARENT_BOUNDARIES = (
@@ -36,6 +40,8 @@ _SQL_PARENT_BOUNDARIES = (
     "django.cursor.executemany",
     "django.cursor.debug.execute",
     "django.cursor.debug.executemany",
+    "psycopg3.Connection.execute",
+    "psycopg3.AsyncConnection.execute",
 )
 
 
@@ -60,10 +66,39 @@ def _sql_template(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     return None
 
 
-def _sql_call_wrapper(function: str, key: str, parent: tuple[str, ...] = ()):
+@contextlib.contextmanager
+def _sql_boundary(
+    instance: Any, key: str, parent: tuple[str, ...], driver: bool
+):
+    with execution_boundary(key, nested_in=parent) as root:
+        if not driver:
+            yield root
+            return
+        stack = _DRIVER_CALLS.get()
+        # Different wrappers on the same cursor are a subclass delegating to
+        # its base implementation. Preserve identical-operation reentry and
+        # calls on independent cursors instead of globally suppressing SQL.
+        delegated = any(
+            receiver is instance and outer_key != key
+            for receiver, outer_key in stack
+        )
+        token = _DRIVER_CALLS.set(stack + ((instance, key),))
+        try:
+            yield root and not delegated
+        finally:
+            _DRIVER_CALLS.reset(token)
+
+
+def _sql_call_wrapper(
+    function: str,
+    key: str,
+    parent: tuple[str, ...] = (),
+    *,
+    driver: bool = False,
+):
     def wrapper(wrapped, instance, args, kwargs):
         template = _sql_template(args, kwargs)
-        with execution_boundary(key, nested_in=parent) as root:
+        with _sql_boundary(instance, key, parent, driver) as root:
             if root:
                 safe_observe(_report_sql, function, template)
             return wrapped(*args, **kwargs)
@@ -72,11 +107,15 @@ def _sql_call_wrapper(function: str, key: str, parent: tuple[str, ...] = ()):
 
 
 def _async_sql_call_wrapper(
-    function: str, key: str, parent: tuple[str, ...] = ()
+    function: str,
+    key: str,
+    parent: tuple[str, ...] = (),
+    *,
+    driver: bool = False,
 ):
     async def wrapper(wrapped, instance, args, kwargs):
         template = _sql_template(args, kwargs)
-        with execution_boundary(key, nested_in=parent) as root:
+        with _sql_boundary(instance, key, parent, driver) as root:
             if root:
                 safe_observe(_report_sql, function, template)
             result = wrapped(*args, **kwargs)
@@ -91,10 +130,14 @@ def _driver_method_wrapper(
     parent: tuple[str, ...] = (),
     asynchronous: bool = False,
 ):
-    parent = tuple(parent) + _SQL_PARENT_BOUNDARIES
+    parent = tuple(
+        boundary
+        for boundary in tuple(parent) + _SQL_PARENT_BOUNDARIES
+        if boundary != key
+    )
     if asynchronous:
-        return _async_sql_call_wrapper(function, key, parent)
-    return _sql_call_wrapper(function, key, parent)
+        return _async_sql_call_wrapper(function, key, parent, driver=True)
+    return _sql_call_wrapper(function, key, parent, driver=True)
 
 
 def _propagating_text_wrapper(wrapped, instance, args, kwargs):
@@ -271,6 +314,12 @@ def _patch_driver_class(
     installed_any = False
     for method in methods:
         try:
+            descriptor = inspect.getattr_static(target, method, None)
+            if any(descriptor is entry[3] for entry in patches.entries):
+                # The parent already owns this exact wrapper. Installing an
+                # inherited copy both doubles observation and shadows it on
+                # the subclass after uninstall.
+                continue
             original = getattr(target, method, None)
             asynchronous = inspect.iscoroutinefunction(original)
         except Exception:
@@ -529,7 +578,9 @@ def install(patches, seen) -> set[str]:
             cursor_wrapper,
             "execute",
             _sql_call_wrapper(
-                "django.CursorWrapper.execute", "django.cursor.execute"
+                "django.CursorWrapper.execute",
+                "django.cursor.execute",
+                ("django.cursor.debug.execute",),
             ),
         ):
             adapters.add("django")
@@ -539,7 +590,9 @@ def install(patches, seen) -> set[str]:
             cursor_wrapper,
             "executemany",
             _sql_call_wrapper(
-                "django.CursorWrapper.executemany", "django.cursor.executemany"
+                "django.CursorWrapper.executemany",
+                "django.cursor.executemany",
+                ("django.cursor.debug.executemany",),
             ),
         ):
             adapters.add("django")
@@ -557,7 +610,6 @@ def install(patches, seen) -> set[str]:
                 _sql_call_wrapper(
                     "django.CursorDebugWrapper.execute",
                     "django.cursor.debug.execute",
-                    ("django.cursor.execute",),
                 ),
             ):
                 adapters.add("django")
@@ -569,10 +621,6 @@ def install(patches, seen) -> set[str]:
                 _sql_call_wrapper(
                     "django.CursorDebugWrapper.executemany",
                     "django.cursor.debug.executemany",
-                    (
-                        "django.cursor.debug.executemany",
-                        "django.cursor.executemany",
-                    ),
                 ),
             ):
                 adapters.add("django")

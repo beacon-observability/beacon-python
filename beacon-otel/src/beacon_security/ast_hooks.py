@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import builtins
+import collections
 import contextvars
+import enum
 import inspect
+import logging
 import operator
 import sys
+import types
+import typing
+import warnings
 from functools import partial
 
 from . import propagation, runtime
@@ -27,8 +33,52 @@ _FRAME_FUNCTIONS = (
     builtins.__build_class__,
     sys._getframe,
     inspect.currentframe,
+    collections.namedtuple,
+    warnings.warn,
+    typing.TypeVar,
+    typing.NewType,
+    typing.ParamSpec,
+    typing.TypeVarTuple,
+    typing.NamedTuple,
+    typing.TypedDict,
+    *(
+        getattr(logging, name)
+        for name in (
+            "debug",
+            "info",
+            "warning",
+            "warn",
+            "error",
+            "exception",
+            "critical",
+            "fatal",
+            "log",
+        )
+    ),
+    *(
+        getattr(cls, name)
+        for cls in (logging.Logger, logging.LoggerAdapter)
+        for name in (
+            "debug",
+            "info",
+            "warning",
+            "warn",
+            "error",
+            "exception",
+            "critical",
+            "fatal",
+            "log",
+        )
+        if hasattr(cls, name)
+    ),
 )
 _FRAME_FUNCTION_IDS = frozenset(map(id, _FRAME_FUNCTIONS))
+_LOGGING_FUNCTION_IDS = frozenset(
+    id(function)
+    for function in _FRAME_FUNCTIONS
+    if getattr(function, "__module__", None) == "logging"
+)
+_WARNING_FUNCTION = warnings.warn
 _IADD = contextvars.ContextVar("beacon_security_iadd", default=None)
 
 
@@ -42,6 +92,50 @@ class AugmentedAdd:
     def __exit__(self, *_):
         _IADD.reset(self.token)
         self.token = self.observation = None
+
+
+class AugmentedTarget(AugmentedAdd):
+    __slots__ = ("target", "key", "kind", "location", "left", "reads")
+
+    def __init__(self, target, key, kind, location):
+        self.target, self.key, self.kind = target, key, kind
+        self.location = location
+
+    def __enter__(self):
+        # A failing descriptor/item read must not publish a context token.
+        read = attribute if self.kind == "attribute" else subscript
+        self.left = read(self.target, self.key, self.location)
+        self.reads = 0
+        super().__enter__()
+
+    @property
+    def value(self):
+        value = self.left
+        self.reads += 1
+        if self.reads == 2:
+            # The native opcode and iadd_operand now own the operand; retaining
+            # another reference would change CPython string reuse behavior.
+            self.left = None
+        return value
+
+    @value.setter
+    def value(self, result):
+        # A business setter may itself call a sink. Publish marks first.
+        iadd_result(result, self.location)
+        if self.kind == "attribute":
+            setattr(self.target, self.key, result)
+        else:
+            self.target[self.key] = result
+
+    def __exit__(self, *error):
+        try:
+            super().__exit__(*error)
+        finally:
+            self.target = self.key = self.left = None
+
+
+def iadd_target():
+    return _IADD.get()
 
 
 def iadd_operand(left, right):
@@ -59,6 +153,12 @@ def iadd_operand(left, right):
                 right_marks,
                 len(left),
             )
+    elif (
+        state is not None
+        and state.objects
+        and (state.marks(left) or state.marks(right))
+    ):
+        state.gap("unmodeled_iadd")
     return right
 
 
@@ -290,13 +390,94 @@ def _after(state, model, token, result, location):
     return result
 
 
+def _caller_stacklevel(level, *, logging_call=False, skip_prefixes=()):
+    # Start at _caller_sensitive_call, where the standard-library API will run.
+    # Count its physical frames while selecting the Nth application frame.
+    frame = sys._getframe(1)
+    distance = 0
+    remaining = level
+    first_application_frame = True
+    start_frame = True
+    try:
+        while frame is not None:
+            filename = frame.f_code.co_filename
+            native_skip = (
+                filename == logging._srcfile
+                if logging_call
+                else ("importlib" in filename and "_bootstrap" in filename)
+                or bool(skip_prefixes and filename.startswith(skip_prefixes))
+            )
+            if not native_skip or (start_frame and not logging_call):
+                distance += 1
+            # warnings counts its immediate caller even when that filename
+            # matches skip_file_prefixes; only subsequent frames are skipped.
+            if filename != __file__ and (
+                not native_skip
+                or (first_application_frame and not logging_call)
+            ):
+                first_application_frame = False
+                remaining -= 1
+                if remaining == 0:
+                    return distance
+            start_frame = False
+            frame = frame.f_back
+        return distance + remaining
+    finally:
+        del frame
+
+
+def _caller_sensitive_call(function, logging_call, /, *args, **kwargs):
+    positional = not logging_call and len(args) >= 3
+    level = args[2] if positional else kwargs.get("stacklevel", 1)
+    # Leave invalid or application-defined stacklevel objects to the native API.
+    if type(level) in (int, bool) and level > 0:
+        prefixes = kwargs.get("skip_file_prefixes", ())
+        if type(prefixes) is not tuple or not all(
+            type(prefix) is str for prefix in prefixes
+        ):
+            return function(*args, **kwargs)
+        level = _caller_stacklevel(
+            max(level, 2) if prefixes else level,
+            logging_call=logging_call,
+            skip_prefixes=prefixes,
+        )
+        if positional:
+            args = (*args[:2], level, *args[3:])
+        else:
+            kwargs["stacklevel"] = level
+    return function(*args, **kwargs)
+
+
 def call_target(function, location, awaited=False):
+    # Outside a collecting request the original callable executes directly in
+    # the business frame, without allocating an observation wrapper.
+    if runtime.current_state() is None:
+        return function
     actual = function
     while type(actual) is partial:
         actual = actual.func
+    if type(actual) is types.MethodType:
+        actual = actual.__func__
+    if id(actual) in _LOGGING_FUNCTION_IDS or actual is _WARNING_FUNCTION:
+        target = function
+        arguments = ()
+        keywords = {}
+        while type(target) is partial:
+            arguments = target.args + arguments
+            keywords = {**target.keywords, **keywords}
+            target = target.func
+        return partial(
+            _caller_sensitive_call,
+            target,
+            id(actual) in _LOGGING_FUNCTION_IDS,
+            *arguments,
+            **keywords,
+        )
     # Return the actual callable to the transformed business frame. Calling a
     # dynamic locals/eval alias inside a helper changes its implicit namespace.
-    if id(actual) in _FRAME_FUNCTION_IDS:
+    if id(actual) in _FRAME_FUNCTION_IDS or issubclass(
+        type(actual), enum.EnumMeta
+    ):
         if actual is builtins.eval or actual is builtins.exec:
             runtime.gap("dynamic_code_execution")
         return function

@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import inspect
 from collections.abc import Mapping
+from itertools import islice
 from typing import Any
 
 from .. import config
@@ -80,6 +81,33 @@ def _patch_descriptor(
     return installed
 
 
+def _capture_header_iteration(
+    state: Any,
+    instance: Any,
+    result: Any,
+    spec: tuple[str, str],
+    method: str,
+    location: str,
+) -> None:
+    if type(result) not in (list, tuple):
+        state.gap("framework.header_iteration_unmodeled")
+        return
+    maximum = min(256, config.limit("beacon.security.python.max-fields", 256))
+    if method == "items":
+        pairs = result
+    else:
+        # Do not decode a second set of values. Only names are needed to
+        # associate each actual result object with its header field.
+        raw = instance.raw
+        names = (key.decode("latin-1") for key, _ in islice(raw, maximum + 1))
+        pairs = zip(names, result)
+    for index, (key, value) in enumerate(islice(pairs, maximum + 1)):
+        if index == maximum:
+            state.gap("framework.field_limit")
+            break
+        source(value, spec[0], _carrier_name(spec[1], key), location)
+
+
 def _carrier_method_wrapper(method: str, location: str):
     def wrapper(
         wrapped: Any,
@@ -90,7 +118,17 @@ def _carrier_method_wrapper(method: str, location: str):
         result = wrapped(*args, **kwargs)
         state = current_state()
         spec = carrier_spec(instance, state)
-        if spec is None or method not in {"__getitem__", "get", "getlist"}:
+        if spec is None:
+            return result
+        if method in {"items", "values"}:
+            try:
+                _capture_header_iteration(
+                    state, instance, result, spec, method, location
+                )
+            except Exception:
+                state.gap("framework.header_iteration")
+            return result
+        if method not in {"__getitem__", "get", "getlist"}:
             return result
         key = args[0] if args else kwargs.get("key")
         if key is None:
@@ -144,14 +182,13 @@ def _capture_request_carrier(
 ) -> Any:
     state = current_state()
     if state is not None and is_http_state(state):
-        # Query/header carriers are already parsed when their request
-        # properties are read.  Capture their bounded contents here so an
-        # application that consumes ``items()``/``values()`` still gets the
-        # same field identities without requiring an iterator proxy.  Form
-        # data is handled after Starlette's actual parser completes below.
-        capture_mapping(
-            value, kind, f"starlette.requests.Request.{name}", name
-        )
+        # Query carriers retain their decoded values. Headers decode a fresh
+        # set on every access, so their method hooks observe actual returned
+        # values instead of retaining a throwaway eager snapshot.
+        if kind != HTTP_HEADER:
+            capture_mapping(
+                value, kind, f"starlette.requests.Request.{name}", name
+            )
         register_carrier(state, value, kind, name)
     return value
 
@@ -567,7 +604,7 @@ def install(patches: Patches, seen: set[tuple[int, str]]) -> set[str]:
                 patches,
                 seen,
                 headers,
-                ("__getitem__", "get", "getlist"),
+                ("__getitem__", "get", "getlist", "items", "values"),
                 "starlette.datastructures.Headers",
             )
 

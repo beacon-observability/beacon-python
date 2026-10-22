@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import platform
+from collections import deque
 from itertools import count
 from os import environ
 from typing import Dict, Optional
@@ -15,6 +16,7 @@ import requests
 
 from opentelemetry.sdk.extension.profiling.environment_variables import (
     OTEL_PROFILING_PPROF_HEADERS,
+    OTEL_PROFILING_PPROF_MAX_FILES,
     OTEL_PROFILING_PPROF_PATH,
     OTEL_PROFILING_PPROF_UPLOAD_URL,
 )
@@ -39,6 +41,7 @@ class PPROFHTTPExporter:
         timeout: float = 10.0,
         session: Optional[requests.Session] = None,
         pprof_path: str | None = None,
+        max_files: int | None = None,
         service: str | None = None,
         env_name: str | None = None,
         version: str | None = None,
@@ -47,9 +50,19 @@ class PPROFHTTPExporter:
         self._headers = _resolve_headers(headers)
         self._timeout = timeout
         self._session = session or requests.Session()
-        self._pprof_path = pprof_path or environ.get(
-            OTEL_PROFILING_PPROF_PATH, "otel-profiles"
+        self._pprof_path = (
+            pprof_path
+            if pprof_path is not None
+            else environ.get(OTEL_PROFILING_PPROF_PATH)
         )
+        self._max_files = (
+            max_files
+            if max_files is not None
+            else int(environ.get(OTEL_PROFILING_PPROF_MAX_FILES, "3"))
+        )
+        if self._max_files < 1:
+            raise ValueError("max_files must be >= 1")
+        self._written_paths: deque[str] = deque()
         self._service = service
         self._env = env_name
         self._version = version
@@ -57,7 +70,6 @@ class PPROFHTTPExporter:
         self._host = platform.node()
         self._runtime = platform.python_implementation()
         self._runtime_version = platform.python_version()
-        os.makedirs(os.path.dirname(self._pprof_path) or ".", exist_ok=True)
         self._pid = os.getpid()
         self._counter = count()
 
@@ -69,16 +81,22 @@ class PPROFHTTPExporter:
         start_time_unix_nano: int | None = None,
         end_time_unix_nano: int | None = None,
     ) -> ProfileExportResult:
-        filename = self._write_payload(payload)
-        request_headers = dict(self._headers)
-        content_type, body = self._build_request(
-            payload=payload,
-            resource=resource,
-            start_time_unix_nano=start_time_unix_nano,
-            end_time_unix_nano=end_time_unix_nano,
-        )
-        request_headers["Content-Type"] = content_type
         try:
+            filename = self._write_payload(payload)
+        except OSError as exc:
+            # Local copies are diagnostic output, not a prerequisite for
+            # upload. Read-only/full disks must not discard a valid profile.
+            _logger.warning("Cannot save local pprof payload: %s", exc)
+            filename = None
+        try:
+            request_headers = dict(self._headers)
+            content_type, body = self._build_request(
+                payload=payload,
+                resource=resource,
+                start_time_unix_nano=start_time_unix_nano,
+                end_time_unix_nano=end_time_unix_nano,
+            )
+            request_headers["Content-Type"] = content_type
             response = self._session.post(
                 url=self._url,
                 data=body,
@@ -180,12 +198,22 @@ class PPROFHTTPExporter:
             _resource_attribute(resource, "service.version") or self._version
         )
 
-    def _write_payload(self, payload: bytes) -> str:
+    def _write_payload(self, payload: bytes) -> str | None:
+        if not self._pprof_path:
+            return None
         filename = (
             f"{self._pprof_path}.{self._pid}.{next(self._counter)}.pprof"
         )
+        os.makedirs(os.path.dirname(filename) or ".", exist_ok=True)
         with open(filename, "wb") as handle:
             handle.write(payload)
+        self._written_paths.append(filename)
+        while len(self._written_paths) > self._max_files:
+            previous = self._written_paths.popleft()
+            try:
+                os.remove(previous)
+            except OSError as exc:
+                _logger.warning("Cannot remove local pprof payload: %s", exc)
         return filename
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
