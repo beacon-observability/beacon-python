@@ -43,15 +43,7 @@ def install() -> list[str]:
                     _ADAPTERS.update(installer(_PATCHES, _SEEN))
                 except BaseException as error:
                     # Optional integrations must never prevent application startup.
-                    for target, attribute, original, installed in reversed(
-                        _PATCHES.entries[checkpoint:]
-                    ):
-                        try:
-                            if getattr(target, attribute, None) is installed:
-                                setattr(target, attribute, original)
-                        except BaseException:
-                            pass
-                    del _PATCHES.entries[checkpoint:]
+                    _PATCHES.restore_from(checkpoint, suppress_errors=True)
                     _SEEN.intersection_update(seen_before)
                     _record_install_failure(error)
                     continue
