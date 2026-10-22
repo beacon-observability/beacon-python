@@ -47,6 +47,7 @@ _ASYNCIO_LOCKS_MODULE_FILE = getattr(asyncio.locks, "__file__", None)
 class _ProfiledPrimitiveState:
     __slots__ = (
         "acquired_time_ns",
+        "acquired_generation",
         "collector",
         "init_location",
         "is_internal",
@@ -62,6 +63,7 @@ class _ProfiledPrimitiveState:
         is_internal: bool,
     ) -> None:
         self.acquired_time_ns: int | None = None
+        self.acquired_generation = -1
         self.collector = collector
         self.init_location = _resolve_init_location()
         self.is_internal = is_internal
@@ -171,6 +173,7 @@ class _PrimitiveCollector:
         self._buffer_lock = threading.Lock()
         self._buffer: list[CapturedSample] = []
         self._started = False
+        self._generation = 0
         self._original_targets: list[tuple[ModuleType, Any]] = []
         self._internal_module_file = _normalize_path(self.INTERNAL_MODULE_FILE)
 
@@ -209,16 +212,23 @@ class _PrimitiveCollector:
                 patched_target = self._build_patched_target(original_target)
             setattr(module, self.PATCHED_LOCK_NAME, patched_target)
 
+        self._generation += 1
         self._started = True
 
     def stop(self) -> None:
         if not self._started:
             return
 
+        # Existing proxies outlive the factory patch. Disable and drain under
+        # the same lock used to append samples so an in-flight append cannot
+        # leave retained samples after stop returns.
+        with self._buffer_lock:
+            self._started = False
+            self._generation += 1
+            self._buffer.clear()
         for module, original_target in reversed(self._original_targets):
             setattr(module, self.PATCHED_LOCK_NAME, original_target)
         self._original_targets = []
-        self._started = False
 
     def capture(self) -> list[CapturedSample]:
         with self._buffer_lock:
@@ -234,6 +244,7 @@ class _PrimitiveCollector:
         self._buffer = []
         self._original_targets = []
         self._started = False
+        self._generation += 1
 
     def record_acquire(
         self,
@@ -243,6 +254,7 @@ class _PrimitiveCollector:
         end_ns: int,
         frames: tuple[CapturedFrame, ...],
         period: int = 1,
+        generation: int | None = None,
     ) -> None:
         self._record_sample(
             state=state,
@@ -251,6 +263,7 @@ class _PrimitiveCollector:
             value=max(end_ns - start_ns, 0),
             frames=frames,
             period=period,
+            generation=generation,
         )
 
     def record_release(
@@ -261,6 +274,7 @@ class _PrimitiveCollector:
         end_ns: int,
         frames: tuple[CapturedFrame, ...],
         period: int = 1,
+        generation: int | None = None,
     ) -> None:
         self._record_sample(
             state=state,
@@ -269,6 +283,7 @@ class _PrimitiveCollector:
             value=max(end_ns - start_ns, 0),
             frames=frames,
             period=period,
+            generation=generation,
         )
 
     def record_wait(
@@ -279,6 +294,7 @@ class _PrimitiveCollector:
         end_ns: int,
         frames: tuple[CapturedFrame, ...],
         period: int = 1,
+        generation: int | None = None,
     ) -> None:
         self._record_sample(
             state=state,
@@ -287,6 +303,7 @@ class _PrimitiveCollector:
             value=max(end_ns - start_ns, 0),
             frames=frames,
             period=period,
+            generation=generation,
         )
 
     def _build_patched_target(self, original_target: Any) -> Any:
@@ -333,8 +350,13 @@ class _PrimitiveCollector:
         value: int,
         frames: tuple[CapturedFrame, ...],
         period: int = 1,
+        generation: int | None = None,
     ) -> None:
-        if not frames:
+        if generation is None:
+            generation = self._generation
+        if not self._started or not frames:
+            return
+        if generation != self._generation:
             return
 
         current_thread = threading.current_thread()
@@ -385,7 +407,8 @@ class _PrimitiveCollector:
         )
 
         with self._buffer_lock:
-            self._buffer.append(sample)
+            if self._started and generation == self._generation:
+                self._buffer.append(sample)
 
 
 class ThreadingLockCollector(_PrimitiveCollector):
@@ -646,13 +669,22 @@ def _acquire_sync_primitive(
     *args: Any,
     **kwargs: Any,
 ) -> Any:
+    generation = state.collector._generation
     start_ns = monotonic_ns()
     result = inner_func(*args, **kwargs)
     if result is False:
         return result
+    if (
+        not state.collector._started
+        or generation != state.collector._generation
+    ):
+        state.acquired_time_ns = None
+        state.sample_period = 0
+        return result
 
     end_ns = monotonic_ns()
     state.acquired_time_ns = end_ns
+    state.acquired_generation = generation
     state.sample_period = (
         state.collector.sample_period(end_ns - start_ns)
         if not state.is_internal
@@ -667,6 +699,7 @@ def _acquire_sync_primitive(
                 max_frames=state.collector.max_frames
             ),
             period=state.sample_period,
+            generation=generation,
         )
     return result
 
@@ -677,13 +710,22 @@ async def _acquire_async_primitive(
     *args: Any,
     **kwargs: Any,
 ) -> Any:
+    generation = state.collector._generation
     start_ns = monotonic_ns()
     result = await inner_func(*args, **kwargs)
     if result is False:
         return result
+    if (
+        not state.collector._started
+        or generation != state.collector._generation
+    ):
+        state.acquired_time_ns = None
+        state.sample_period = 0
+        return result
 
     end_ns = monotonic_ns()
     state.acquired_time_ns = end_ns
+    state.acquired_generation = generation
     state.sample_period = (
         state.collector.sample_period(end_ns - start_ns)
         if not state.is_internal
@@ -698,6 +740,7 @@ async def _acquire_async_primitive(
                 max_frames=state.collector.max_frames
             ),
             period=state.sample_period,
+            generation=generation,
         )
     return result
 
@@ -709,9 +752,12 @@ def _release_sync_primitive(
     **kwargs: Any,
 ) -> Any:
     acquired_time_ns = state.acquired_time_ns
+    generation = state.acquired_generation
     state.acquired_time_ns = None
     result = inner_func(*args, **kwargs)
     if acquired_time_ns is None or state.is_internal:
+        return result
+    if generation != state.collector._generation:
         return result
     end_ns = monotonic_ns()
     period = state.collector.sample_period(
@@ -725,6 +771,7 @@ def _release_sync_primitive(
         end_ns=end_ns,
         frames=_capture_current_frames(max_frames=state.collector.max_frames),
         period=period,
+        generation=generation,
     )
     return result
 
@@ -735,8 +782,11 @@ def _wait_sync_primitive(
     *args: Any,
     **kwargs: Any,
 ) -> Any:
+    generation = state.collector._generation
     start_ns = monotonic_ns()
     result = inner_func(*args, **kwargs)
+    if generation != state.collector._generation:
+        return result
     end_ns = monotonic_ns()
     period = (
         state.collector.sample_period(end_ns - start_ns)
@@ -752,6 +802,7 @@ def _wait_sync_primitive(
                 max_frames=state.collector.max_frames
             ),
             period=period,
+            generation=generation,
         )
     return result
 
@@ -762,8 +813,11 @@ async def _wait_async_primitive(
     *args: Any,
     **kwargs: Any,
 ) -> Any:
+    generation = state.collector._generation
     start_ns = monotonic_ns()
     result = await inner_func(*args, **kwargs)
+    if generation != state.collector._generation:
+        return result
     end_ns = monotonic_ns()
     period = (
         state.collector.sample_period(end_ns - start_ns)
@@ -779,6 +833,7 @@ async def _wait_async_primitive(
                 max_frames=state.collector.max_frames
             ),
             period=period,
+            generation=generation,
         )
     return result
 

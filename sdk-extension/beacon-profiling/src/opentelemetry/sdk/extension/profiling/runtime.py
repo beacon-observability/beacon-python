@@ -316,23 +316,33 @@ class Profiler:
                 if self._atexit_registered:
                     self._unregister_atexit()
                 return
+            actions = [
+                self._scheduler.stop,
+                self._memory_scheduler.stop,
+                self._scheduler.join,
+                self._memory_scheduler.join,
+            ]
+            if flush:
+                actions.append(self.flush)
+            actions.extend((self._stop_collectors, self._context_bridge.stop))
+            if self._exporter is not None:
+                actions.append(self._exporter.shutdown)
+            failure: BaseException | None = None
             try:
-                self._scheduler.stop()
-                self._memory_scheduler.stop()
-                self._scheduler.join()
-                self._memory_scheduler.join()
-                if flush:
-                    self.flush()
-                self._stop_collectors()
-                self._context_bridge.stop()
-                if self._exporter is not None:
-                    self._exporter.shutdown()
+                for action in actions:
+                    try:
+                        action()
+                    except BaseException as error:
+                        if failure is None:
+                            failure = error
+            finally:
                 self._started = False
                 if self.__class__._active_instance is self:
                     self.__class__._active_instance = None
-            finally:
                 if self._atexit_registered:
                     self._unregister_atexit()
+            if failure is not None:
+                raise failure
 
     def capture_once(self) -> None:
         collectors = list(self._active_collectors)
