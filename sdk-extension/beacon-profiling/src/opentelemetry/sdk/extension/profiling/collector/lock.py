@@ -17,8 +17,10 @@ from __future__ import annotations
 import asyncio
 import asyncio.locks
 import os
+import random
 import sys
 import threading
+from functools import lru_cache
 from time import monotonic_ns, time_ns
 from types import FrameType, ModuleType
 from typing import Any, Callable
@@ -49,6 +51,7 @@ class _ProfiledPrimitiveState:
         "init_location",
         "is_internal",
         "lock_kind",
+        "sample_period",
     )
 
     def __init__(
@@ -63,6 +66,7 @@ class _ProfiledPrimitiveState:
         self.init_location = _resolve_init_location()
         self.is_internal = is_internal
         self.lock_kind = lock_kind
+        self.sample_period = 0
 
 
 class _ProfiledPrimitiveProxy:
@@ -137,10 +141,33 @@ class _PrimitiveCollector:
         *,
         max_frames: int = 64,
         include_trace_context: bool = True,
+        sampling_interval: int | None = None,
+        min_duration_ns: int | None = None,
     ) -> None:
         self._context_bridge = context_bridge
         self._max_frames = max_frames
         self._include_trace_context = include_trace_context
+        self._sampling_interval = (
+            sampling_interval
+            if sampling_interval is not None
+            else int(
+                os.environ.get("OTEL_PROFILING_LOCK_SAMPLING_INTERVAL", "100")
+            )
+        )
+        self._min_duration_ns = (
+            min_duration_ns
+            if min_duration_ns is not None
+            else int(
+                os.environ.get(
+                    "OTEL_PROFILING_LOCK_MIN_DURATION_NS", "1000000"
+                )
+            )
+        )
+        if self._sampling_interval < 1 or self._min_duration_ns < 0:
+            raise ValueError(
+                "lock sampling interval must be >= 1 and duration >= 0"
+            )
+        self._random = random.Random()
         self._buffer_lock = threading.Lock()
         self._buffer: list[CapturedSample] = []
         self._started = False
@@ -150,6 +177,24 @@ class _PrimitiveCollector:
     @property
     def max_frames(self) -> int:
         return self._max_frames
+
+    def sample_period(
+        self, duration_ns: int, selected: int | None = None
+    ) -> int:
+        if not self._started:
+            return 0
+        if (
+            duration_ns >= self._min_duration_ns
+            or self._sampling_interval == 1
+        ):
+            return 1
+        if selected is not None:
+            return selected
+        return (
+            self._sampling_interval
+            if self._random.randrange(self._sampling_interval) == 0
+            else 0
+        )
 
     def start(self) -> None:
         if self._started:
@@ -197,6 +242,7 @@ class _PrimitiveCollector:
         start_ns: int,
         end_ns: int,
         frames: tuple[CapturedFrame, ...],
+        period: int = 1,
     ) -> None:
         self._record_sample(
             state=state,
@@ -204,6 +250,7 @@ class _PrimitiveCollector:
             period_type="lock.acquire",
             value=max(end_ns - start_ns, 0),
             frames=frames,
+            period=period,
         )
 
     def record_release(
@@ -213,6 +260,7 @@ class _PrimitiveCollector:
         start_ns: int,
         end_ns: int,
         frames: tuple[CapturedFrame, ...],
+        period: int = 1,
     ) -> None:
         self._record_sample(
             state=state,
@@ -220,6 +268,7 @@ class _PrimitiveCollector:
             period_type="lock.release",
             value=max(end_ns - start_ns, 0),
             frames=frames,
+            period=period,
         )
 
     def record_wait(
@@ -229,6 +278,7 @@ class _PrimitiveCollector:
         start_ns: int,
         end_ns: int,
         frames: tuple[CapturedFrame, ...],
+        period: int = 1,
     ) -> None:
         self._record_sample(
             state=state,
@@ -236,6 +286,7 @@ class _PrimitiveCollector:
             period_type="lock.wait",
             value=max(end_ns - start_ns, 0),
             frames=frames,
+            period=period,
         )
 
     def _build_patched_target(self, original_target: Any) -> Any:
@@ -281,6 +332,7 @@ class _PrimitiveCollector:
         period_type: str,
         value: int,
         frames: tuple[CapturedFrame, ...],
+        period: int = 1,
     ) -> None:
         if not frames:
             return
@@ -318,7 +370,7 @@ class _PrimitiveCollector:
             sample_unit="nanoseconds",
             period_type=period_type,
             period_unit="count",
-            period=1,
+            period=period,
             attributes=(
                 CapturedAttribute(
                     key="lock.name",
@@ -328,6 +380,7 @@ class _PrimitiveCollector:
                     key="lock.kind",
                     value=state.lock_kind,
                 ),
+                CapturedAttribute(key="lock.sampling.interval", value=period),
             ),
         )
 
@@ -600,7 +653,12 @@ def _acquire_sync_primitive(
 
     end_ns = monotonic_ns()
     state.acquired_time_ns = end_ns
-    if not state.is_internal:
+    state.sample_period = (
+        state.collector.sample_period(end_ns - start_ns)
+        if not state.is_internal
+        else 0
+    )
+    if state.sample_period:
         state.collector.record_acquire(
             state,
             start_ns=start_ns,
@@ -608,6 +666,7 @@ def _acquire_sync_primitive(
             frames=_capture_current_frames(
                 max_frames=state.collector.max_frames
             ),
+            period=state.sample_period,
         )
     return result
 
@@ -625,7 +684,12 @@ async def _acquire_async_primitive(
 
     end_ns = monotonic_ns()
     state.acquired_time_ns = end_ns
-    if not state.is_internal:
+    state.sample_period = (
+        state.collector.sample_period(end_ns - start_ns)
+        if not state.is_internal
+        else 0
+    )
+    if state.sample_period:
         state.collector.record_acquire(
             state,
             start_ns=start_ns,
@@ -633,6 +697,7 @@ async def _acquire_async_primitive(
             frames=_capture_current_frames(
                 max_frames=state.collector.max_frames
             ),
+            period=state.sample_period,
         )
     return result
 
@@ -648,12 +713,18 @@ def _release_sync_primitive(
     result = inner_func(*args, **kwargs)
     if acquired_time_ns is None or state.is_internal:
         return result
-
+    end_ns = monotonic_ns()
+    period = state.collector.sample_period(
+        end_ns - acquired_time_ns, selected=state.sample_period
+    )
+    if not period:
+        return result
     state.collector.record_release(
         state,
         start_ns=acquired_time_ns,
-        end_ns=monotonic_ns(),
+        end_ns=end_ns,
         frames=_capture_current_frames(max_frames=state.collector.max_frames),
+        period=period,
     )
     return result
 
@@ -666,14 +737,21 @@ def _wait_sync_primitive(
 ) -> Any:
     start_ns = monotonic_ns()
     result = inner_func(*args, **kwargs)
-    if not state.is_internal:
+    end_ns = monotonic_ns()
+    period = (
+        state.collector.sample_period(end_ns - start_ns)
+        if not state.is_internal
+        else 0
+    )
+    if period:
         state.collector.record_wait(
             state,
             start_ns=start_ns,
-            end_ns=monotonic_ns(),
+            end_ns=end_ns,
             frames=_capture_current_frames(
                 max_frames=state.collector.max_frames
             ),
+            period=period,
         )
     return result
 
@@ -686,14 +764,21 @@ async def _wait_async_primitive(
 ) -> Any:
     start_ns = monotonic_ns()
     result = await inner_func(*args, **kwargs)
-    if not state.is_internal:
+    end_ns = monotonic_ns()
+    period = (
+        state.collector.sample_period(end_ns - start_ns)
+        if not state.is_internal
+        else 0
+    )
+    if period:
         state.collector.record_wait(
             state,
             start_ns=start_ns,
-            end_ns=monotonic_ns(),
+            end_ns=end_ns,
             frames=_capture_current_frames(
                 max_frames=state.collector.max_frames
             ),
+            period=period,
         )
     return result
 
@@ -747,6 +832,7 @@ def _first_external_frame() -> FrameType | None:
     return None
 
 
+@lru_cache(maxsize=4096)
 def _normalize_path(path: str | None) -> str | None:
     if not path:
         return None

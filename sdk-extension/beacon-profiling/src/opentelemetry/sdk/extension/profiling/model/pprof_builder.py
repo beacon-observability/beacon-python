@@ -372,13 +372,13 @@ class CompatiblePprofProfileBuilder(PprofProfileBuilder):
             "lock.acquire.duration",
             "lock.wait.duration",
         ):
-            values[4] = 1
-            values[5] = sample.value
+            values[4] = max(1, sample.period)
+            values[5] = sample.value * max(1, sample.period)
             return values
 
         if sample.sample_type == "lock.hold.duration":
-            values[6] = 1
-            values[7] = sample.value
+            values[6] = max(1, sample.period)
+            values[7] = sample.value * max(1, sample.period)
             return values
 
         if sample.sample_type == "memory.heap.bytes":

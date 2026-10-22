@@ -23,7 +23,7 @@ def test_async_acquisition_and_hold_are_measured_once(
     monkeypatch, collector_class, name: str, context_manager: bool
 ) -> None:
     async def exercise() -> None:
-        collector = collector_class(ContextBridge())
+        collector = collector_class(ContextBridge(), sampling_interval=1)
         collector.start()
         try:
             primitive = getattr(asyncio, name)()
@@ -49,7 +49,9 @@ def test_async_acquisition_and_hold_are_measured_once(
 
 def test_cancelled_async_with_has_no_completed_acquire_sample() -> None:
     async def exercise() -> None:
-        collector = locks.AsyncioLockCollector(ContextBridge())
+        collector = locks.AsyncioLockCollector(
+            ContextBridge(), sampling_interval=1
+        )
         collector.start()
         try:
             primitive = asyncio.Lock()
@@ -82,7 +84,9 @@ def test_body_exception_keeps_native_async_context_manager_cleanup() -> None:
     error = RuntimeError("business failure")
 
     async def exercise() -> None:
-        collector = locks.AsyncioLockCollector(ContextBridge())
+        collector = locks.AsyncioLockCollector(
+            ContextBridge(), sampling_interval=1
+        )
         collector.start()
         try:
             primitive = asyncio.Lock()
