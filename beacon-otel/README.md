@@ -137,6 +137,12 @@ comments. This is not a SQL parser or complete dialect implementation. Other
 dialects, backslash/dollar quoting, unsupported syntax, imprecise ranges, and
 inputs exceeding 8192 code points or 64 marks retain uncertainty. Fixed SQL
 parameter binding remains separate from untrusted dynamic templates.
+Within the supported subset, a tainted quote that closes a fixed quoted
+region (or a fixed quote that closes a tainted region) is structural evidence.
+Doubled quote escapes and ordinary values inside fixed quotes are not promoted
+on that basis. Placeholder dialects such as `%s`, `%(name)s`, and `:name`
+are currently outside this lexical subset and remain `unknown`; bound values
+in a fixed SQL template remain separate from SQL-template pollution.
 
 The shell subset supports simple POSIX `sh`, `bash`, `dash`, `ksh`, and `zsh`
 commands, quoting, escapes, and control separators. Expansion, redirection,
