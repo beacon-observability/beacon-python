@@ -29,6 +29,12 @@ from opentelemetry.sdk.extension.profiling.collector.base import (
     CapturedAttribute,
     CapturedFrame,
     CapturedSample,
+    captured_frame,
+)
+from opentelemetry.sdk.extension.profiling.collector.buffering import (
+    SampleBudget,
+    SampleBuffer,
+    internal_work,
 )
 from opentelemetry.sdk.extension.profiling.context_bridge import ContextBridge
 from opentelemetry.trace import INVALID_SPAN_CONTEXT
@@ -145,7 +151,12 @@ class _PrimitiveCollector:
         include_trace_context: bool = True,
         sampling_interval: int | None = None,
         min_duration_ns: int | None = None,
+        sample_budget: SampleBudget | None = None,
     ) -> None:
+        self._owns_sample_budget = sample_budget is None
+        self._sample_budget = (
+            sample_budget if sample_budget is not None else SampleBudget()
+        )
         self._context_bridge = context_bridge
         self._max_frames = max_frames
         self._include_trace_context = include_trace_context
@@ -171,7 +182,7 @@ class _PrimitiveCollector:
             )
         self._random = random.Random()
         self._buffer_lock = threading.Lock()
-        self._buffer: list[CapturedSample] = []
+        self._buffer = SampleBuffer(self._sample_budget)
         self._started = False
         self._generation = 0
         self._original_targets: list[tuple[ModuleType, Any]] = []
@@ -184,7 +195,7 @@ class _PrimitiveCollector:
     def sample_period(
         self, duration_ns: int, selected: int | None = None
     ) -> int:
-        if not self._started:
+        if not self._started or internal_work():
             return 0
         if (
             duration_ns >= self._min_duration_ns
@@ -232,16 +243,16 @@ class _PrimitiveCollector:
 
     def capture(self) -> list[CapturedSample]:
         with self._buffer_lock:
-            captured = self._buffer
-            self._buffer = []
-        return captured
+            return self._buffer.drain()
 
     def reset_after_fork(self) -> None:
         if self._started:
             for module, original_target in reversed(self._original_targets):
                 setattr(module, self.PATCHED_LOCK_NAME, original_target)
         self._buffer_lock = threading.Lock()
-        self._buffer = []
+        if self._owns_sample_budget:
+            self._sample_budget.reset_after_fork()
+        self._buffer = SampleBuffer(self._sample_budget)
         self._original_targets = []
         self._started = False
         self._generation += 1
@@ -844,7 +855,7 @@ def _capture_current_frames(*, max_frames: int) -> tuple[CapturedFrame, ...]:
     while current is not None and len(frames) < max_frames:
         code = current.f_code
         frames.append(
-            CapturedFrame(
+            captured_frame(
                 function=code.co_name,
                 filename=code.co_filename,
                 lineno=current.f_lineno,

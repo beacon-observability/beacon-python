@@ -27,6 +27,12 @@ from opentelemetry.sdk.extension.profiling.collector.base import (
     CapturedAttribute,
     CapturedFrame,
     CapturedSample,
+    captured_frame,
+)
+from opentelemetry.sdk.extension.profiling.collector.buffering import (
+    SampleBudget,
+    SampleBuffer,
+    internal_work,
 )
 from opentelemetry.sdk.extension.profiling.context_bridge import ContextBridge
 from opentelemetry.trace import INVALID_SPAN_CONTEXT
@@ -66,17 +72,22 @@ class ExceptionCollector:
         include_trace_context: bool = True,
         sampling_interval: int = 100,
         collect_message: bool = False,
+        sample_budget: SampleBudget | None = None,
     ) -> None:
         if sampling_interval < 1:
             raise ValueError("sampling_interval must be >= 1")
 
+        self._owns_sample_budget = sample_budget is None
+        self._sample_budget = (
+            sample_budget if sample_budget is not None else SampleBudget()
+        )
         self._context_bridge = context_bridge
         self._max_frames = max_frames
         self._include_trace_context = include_trace_context
         self._sampling_interval = sampling_interval
         self._collect_message = collect_message
 
-        self._buffer: list[CapturedSample] = []
+        self._buffer = SampleBuffer(self._sample_budget)
         self._buffer_lock = threading.Lock()
         self._sampler = _PoissonSampler()
         self._counter = 0
@@ -134,24 +145,26 @@ class ExceptionCollector:
 
     def stop(self) -> None:
         tool_id = self._monitoring_tool_id
+        with self._buffer_lock:
+            self._monitoring_tool_id = None
+            self._buffer.clear()
         if tool_id is None:
             return
 
         self._cleanup_monitoring(tool_id)
-        self._monitoring_tool_id = None
 
     def capture(self) -> list[CapturedSample]:
         with self._buffer_lock:
-            captured = self._buffer
-            self._buffer = []
-        return captured
+            return self._buffer.drain()
 
     def reset_after_fork(self) -> None:
         tool_id = self._monitoring_tool_id
         if tool_id is not None:
             self._cleanup_monitoring(tool_id)
         self._buffer_lock = threading.Lock()
-        self._buffer = []
+        if self._owns_sample_budget:
+            self._sample_budget.reset_after_fork()
+        self._buffer = SampleBuffer(self._sample_budget)
         self._counter = 0
         self._next_sample = self._sampling_interval
         self._collecting_state = threading.local()
@@ -197,7 +210,10 @@ class ExceptionCollector:
     ) -> None:
         del code, instruction_offset
 
-        if self._is_collecting():
+        if self._is_collecting() or internal_work():
+            return
+        tool_id = self._monitoring_tool_id
+        if tool_id is None:
             return
 
         self._counter += 1
@@ -213,7 +229,8 @@ class ExceptionCollector:
             if sample is None:
                 return
             with self._buffer_lock:
-                self._buffer.append(sample)
+                if self._monitoring_tool_id == tool_id:
+                    self._buffer.append(sample)
         except Exception:
             _logger.debug("Failed to capture handled exception", exc_info=True)
         finally:
@@ -287,7 +304,7 @@ class ExceptionCollector:
         while current is not None:
             frame = current.tb_frame
             frames.append(
-                CapturedFrame(
+                captured_frame(
                     function=frame.f_code.co_name,
                     filename=frame.f_code.co_filename,
                     lineno=current.tb_lineno,
