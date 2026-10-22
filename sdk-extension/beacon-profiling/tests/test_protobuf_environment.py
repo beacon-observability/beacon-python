@@ -14,6 +14,12 @@ def test_profiling_import_preserves_protobuf_selection(
     backend: str | None, protobuf_first: bool
 ) -> None:
     environment = dict(os.environ)
+    # Integration tests can leave auto-instrumentation enabled/PYTHONPATH set.
+    # Probe import behavior without starting exporters in either process.
+    environment["OTEL_PROFILING_ENABLED"] = "false"
+    environment["OTEL_TRACES_EXPORTER"] = "none"
+    environment["OTEL_METRICS_EXPORTER"] = "none"
+    environment["OTEL_LOGS_EXPORTER"] = "none"
     key = "PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"
     environment.pop(key, None)
     if backend is not None:
