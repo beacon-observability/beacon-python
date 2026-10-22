@@ -33,6 +33,7 @@ from opentelemetry.proto.profiles.v1development.profiles_pb2 import (
     Line,
     Link,
     Location,
+    Mapping,
     Profile,
     ProfilesDictionary,
     ResourceProfiles,
@@ -203,16 +204,18 @@ class _DictionaryBuilder:
         self._strings = [""]
         self._string_indices = {"": 0}
 
-        self._functions: list[Function] = []
-        self._function_indices: dict[tuple[str, str, str, int], int] = {}
+        self._functions: list[Function] = [Function()]
+        self._function_indices: dict[tuple[str, str, str, int], int] = {
+            ("", "", "", 0): 0
+        }
 
-        self._locations: list[Location] = []
+        self._locations: list[Location] = [Location()]
         self._location_indices: dict[tuple[int, int], int] = {}
 
-        self._stacks: list[Stack] = []
-        self._stack_indices: dict[tuple[int, ...], int] = {}
+        self._stacks: list[Stack] = [Stack()]
+        self._stack_indices: dict[tuple[int, ...], int] = {(): 0}
 
-        self._attributes: list[KeyValueAndUnit] = []
+        self._attributes: list[KeyValueAndUnit] = [KeyValueAndUnit()]
         self._attribute_indices: dict[tuple[str, object, str], int] = {}
 
         self._links = [Link()]
@@ -220,6 +223,7 @@ class _DictionaryBuilder:
 
     def build(self) -> ProfilesDictionary:
         return ProfilesDictionary(
+            mapping_table=[Mapping()],
             string_table=self._strings,
             function_table=self._functions,
             location_table=self._locations,
