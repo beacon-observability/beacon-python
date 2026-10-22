@@ -67,6 +67,8 @@ The following environment variables are supported:
 * ``OTEL_EXPORTER_OTLP_PROFILES_CLIENT_KEY``
 * ``OTEL_EXPORTER_OTLP_PROFILES_CLIENT_CERTIFICATE``
 * ``OTEL_PROFILING_PPROF_PATH``
+* ``OTEL_PROFILING_PPROF_MAX_FILES`` (HTTP upload local copies only; defaults
+  to 3 retained files per exporter instance)
 * ``OTEL_PROFILING_PPROF_UPLOAD_URL``
 * ``OTEL_PROFILING_PPROF_HEADERS``
 
@@ -104,7 +106,18 @@ copy:
 
     export OTEL_PROFILING_PPROF_UPLOAD_URL=http://localhost:9529/profiling/v1/input
     export OTEL_PROFILING_PPROF_HEADERS="X-API-Key:xxx"
+    export OTEL_PROFILING_PPROF_PATH=/tmp/otel-profile
     beacon python app.py
+
+HTTP upload does not write local files unless ``OTEL_PROFILING_PPROF_PATH``
+is set. An empty ``pprof_path`` argument disables copies even when that
+environment variable is set. Local write/cleanup failures are logged and do
+not prevent upload. Retention removes only files written by this exporter
+instance; it never scans or removes files owned by other processes. The
+file-only ``pprof`` exporter retains its existing output behavior.
+
+Capture and export exceptions are logged; subsequent scheduled captures
+and export attempts continue. Failed batches are not replayed automatically.
 
 When ``OTEL_PROFILING_EXPORTER`` is unset and
 ``OTEL_PROFILING_PPROF_UPLOAD_URL`` is configured, the runtime
