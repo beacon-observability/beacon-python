@@ -120,6 +120,17 @@ Queues, rate limits, and byte budgets still bound export; health counters expose
 loss. Very small byte limits can produce `beacon.security.export.truncated`
 envelopes. Occurrence export can increase log volume and is not durable delivery.
 
+### Request body tracking budgets
+
+Raw request-body byte buffers have a separate reservation inside the existing
+request/process tracking limits. By default they may use one quarter of the
+request byte and object budgets, leaving capacity for parsed JSON/form fields.
+Set `BEACON_SECURITY_MAX_BODY_BUFFER_BYTES` to adjust the raw byte reservation
+(at most the request's total byte limit). Oversized/excess raw buffers are not
+retained and produce a `raw_body_buffer_budget` collection gap; later parsed
+fields can still be tracked and analyzed. Raw-body coverage is therefore
+bounded explicitly, and unchanged request/process memory limits still apply.
+
 ### Request-specific attack evidence
 
 A finding's code-risk `assessment` and `validation=unvalidated` are independent

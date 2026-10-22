@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import sys
 import threading
 import uuid
 from dataclasses import replace
@@ -61,6 +62,15 @@ class SecurityState:
         self.max_bytes = config.limit(
             "beacon.security.max.tracked.bytes", 1024 * 1024
         )
+        self.max_body_buffer_bytes = min(
+            self.max_bytes,
+            config.limit(
+                "beacon.security.max.body-buffer.bytes",
+                max(1, self.max_bytes // 4),
+            ),
+        )
+        self._body_buffer_bytes = 0
+        self._body_buffer_objects: set[int] = set()
         self.max_nodes = config.limit("beacon.security.max.nodes", 8192)
         self.max_marks = config.limit(
             "beacon.security.max.marks-per-object", 64
@@ -189,6 +199,9 @@ class SecurityState:
     def _remove(self, key):
         previous = self.objects.pop(key, None)
         if previous is not None:
+            if key in self._body_buffer_objects:
+                self._body_buffer_objects.remove(key)
+                self._body_buffer_bytes -= previous.size
             self.retained_bytes -= previous.size
             self.budget.release(previous.size)
 
@@ -200,6 +213,31 @@ class SecurityState:
     def capture(self, value, kind, name, location=""):
         self.bind_span(trace.get_current_span())
         location = location or caller_location()
+        if (
+            kind == "http.request.body"
+            and name == "body"
+            and type(value) in (bytes, bytearray)
+            and value
+        ):
+            with self.lock:
+                key = id(value)
+                previous = self.objects.get(key)
+                new_buffer = previous is None or previous.value() is not value
+                if new_buffer and (
+                    self._body_buffer_bytes + sys.getsizeof(value)
+                    > self.max_body_buffer_bytes
+                    or len(self._body_buffer_objects) >= self.max_objects // 4
+                ):
+                    # Reserve capacity for decoded business fields. This is
+                    # a carrier coverage gap, not exhaustion of their taint
+                    # graph or the request's entire tracking budget.
+                    self.gap("raw_body_buffer_budget")
+                    return value
+                self.source(value, kind, name, location)
+                if new_buffer and key in self.objects:
+                    self._body_buffer_objects.add(key)
+                    self._body_buffer_bytes += self.objects[key].size
+            return value
         visited = set()
         count = 0
 
@@ -577,6 +615,8 @@ class SecurityState:
             self.server_span = None
             self.budget.release(self.retained_bytes)
             self.retained_bytes = 0
+            self._body_buffer_bytes = 0
+            self._body_buffer_objects.clear()
             self.objects.clear()
             self.nodes.clear()
             self.sources.clear()
