@@ -1,0 +1,1 @@
+修复 ASGI receive 局部取消导致 Security 请求提前结束。
