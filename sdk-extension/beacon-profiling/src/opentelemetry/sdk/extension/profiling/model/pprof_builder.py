@@ -1,12 +1,8 @@
 from __future__ import annotations
 
 import gzip
-import os
 from dataclasses import dataclass, field
 from typing import Sequence
-
-if os.environ.get("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION") != "python":
-    os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 
 from opentelemetry.sdk.extension.profiling.collector.base import (
     CapturedFrame,
