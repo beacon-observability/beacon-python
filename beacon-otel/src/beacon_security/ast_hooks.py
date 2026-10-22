@@ -153,7 +153,11 @@ def iadd_operand(left, right):
                 right_marks,
                 len(left),
             )
-    elif state is not None and (state.marks(left) or state.marks(right)):
+    elif (
+        state is not None
+        and state.objects
+        and (state.marks(left) or state.marks(right))
+    ):
         state.gap("unmodeled_iadd")
     return right
 

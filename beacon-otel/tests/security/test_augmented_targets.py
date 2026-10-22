@@ -313,3 +313,29 @@ async def suspended_item(target, operand):
     finally:
         current.end_request(state)
         current.detach_state(token)
+
+
+def test_clean_numeric_augassign_does_not_query_empty_tracking_table(
+    monkeypatch, tmp_path
+):
+    current, state, token = start_runtime(monkeypatch, tmp_path)
+    fixture = execute_transformed(
+        """
+def increment(value):
+    value += 7
+    return value
+""",
+        current,
+    )
+
+    def unexpected_lookup(value):
+        raise AssertionError(
+            "clean numeric augmented assignment queried marks"
+        )
+
+    monkeypatch.setattr(state, "marks", unexpected_lookup)
+    try:
+        assert fixture["increment"](35) == 42
+    finally:
+        current.end_request(state)
+        current.detach_state(token)
