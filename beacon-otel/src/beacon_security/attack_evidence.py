@@ -165,6 +165,12 @@ def lexical(
                     return evidence("unknown", "shell_syntax_unsupported")
                 command_start = False
         else:
+            # Skip whitespace before looking back for a numeric sign. Only
+            # the next token needs that scan, so each whitespace run is
+            # traversed at most twice rather than once per whitespace byte.
+            if char.isspace():
+                index += 1
+                continue
             if (char == "-" and following == "-") or (
                 char == "/" and following == "*"
             ):
