@@ -206,6 +206,9 @@ def test_lightweight_occurrences_reach_otlp_http(
             == "beacon.security.finding"
         ]
         assert len(findings) == 3
+        # Delivery can prioritize suspected records across requests. Compare
+        # each occurrence by its own trace identity, not global FIFO order.
+        findings.sort(key=lambda item: item[1]["trace_id"])
         assert len({event["finding_id"] for _, event in findings}) == 1
         assert len({event["occurrence_id"] for _, event in findings}) == 3
         assert [event["evidence_sampled"] for _, event in findings] == [
