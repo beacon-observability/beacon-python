@@ -14,7 +14,7 @@ from opentelemetry.sdk.extension.profiling.runtime import Profiler
 
 
 def test_retained_proxy_does_not_record_after_stop_or_retain_buffer() -> None:
-    collector = ThreadingLockCollector(ContextBridge())
+    collector = ThreadingLockCollector(ContextBridge(), sampling_interval=1)
     original = threading.Lock
     collector.start()
     lock = threading.Lock()
@@ -37,7 +37,7 @@ def test_retained_proxy_does_not_record_after_stop_or_retain_buffer() -> None:
 
 
 def test_stop_discards_an_append_in_progress(monkeypatch) -> None:
-    collector = ThreadingLockCollector(ContextBridge())
+    collector = ThreadingLockCollector(ContextBridge(), sampling_interval=1)
     collector.start()
     lock = threading.Lock()
     original = collector._context_bridge.span_metadata_for_thread
@@ -55,6 +55,37 @@ def test_stop_discards_an_append_in_progress(monkeypatch) -> None:
         with lock:
             pass
         assert collector.capture() == []
+    finally:
+        collector.stop()
+
+
+def test_inflight_acquire_cannot_record_into_restarted_session(
+    monkeypatch,
+) -> None:
+    collector = ThreadingLockCollector(ContextBridge(), sampling_interval=1)
+    collector.start()
+    lock = threading.Lock()
+    metadata = collector._context_bridge.span_metadata_for_thread
+    restarted = False
+
+    def restart(thread_id):
+        nonlocal restarted
+        if not restarted:
+            restarted = True
+            collector.stop()
+            collector.start()
+        return metadata(thread_id)
+
+    monkeypatch.setattr(
+        collector._context_bridge, "span_metadata_for_thread", restart
+    )
+    try:
+        with lock:
+            pass
+        assert collector.capture() == []
+        with lock:
+            pass
+        assert len(collector.capture()) == 2
     finally:
         collector.stop()
 

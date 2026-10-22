@@ -53,6 +53,10 @@ The following environment variables are supported:
 * ``OTEL_PROFILING_EXCEPTION_SAMPLING_INTERVAL``
 * ``OTEL_PROFILING_EXCEPTION_COLLECT_MESSAGE``
 * ``OTEL_PROFILING_LOCK_ENABLED``
+* ``OTEL_PROFILING_LOCK_SAMPLING_INTERVAL`` (defaults to 100; one in N
+  short acquisitions is sampled; 1 records every operation)
+* ``OTEL_PROFILING_LOCK_MIN_DURATION_NS`` (defaults to 1000000; operations
+  at or above this duration are recorded without probabilistic sampling)
 * ``OTEL_PROFILING_MEMORY_ENABLED``
 * ``OTEL_PROFILING_MEMORY_INTERVAL`` (defaults to the profile export interval
   and can be overridden by the ``Profiler(memory_interval=...)`` argument)
@@ -73,6 +77,13 @@ The following environment variables are supported:
 Service metadata should be configured with standard OpenTelemetry
 resource settings such as ``OTEL_SERVICE_NAME`` and
 ``OTEL_RESOURCE_ATTRIBUTES``.
+
+Short lock acquisition/hold pairs share one sampling decision. Slow holds
+and waits are retained even when their acquisition was not sampled. Sampling
+is decided before stack walking and trace lookup; filename normalization
+uses a bounded cache. OTLP samples carry their interval as ``period`` and
+``lock.sampling.interval``. Compatible pprof lock counts and durations are
+weighted by that interval; they are estimates when the interval exceeds 1.
 
 Examples
 --------

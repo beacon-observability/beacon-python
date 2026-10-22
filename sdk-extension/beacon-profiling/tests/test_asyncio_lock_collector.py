@@ -12,15 +12,17 @@ from opentelemetry.sdk.trace import TracerProvider
 
 
 def test_asyncio_collectors_patch_and_restore_classes():
-    lock_collector = AsyncioLockCollector(context_bridge=ContextBridge())
+    lock_collector = AsyncioLockCollector(
+        context_bridge=ContextBridge(), sampling_interval=1
+    )
     semaphore_collector = AsyncioSemaphoreCollector(
-        context_bridge=ContextBridge()
+        context_bridge=ContextBridge(), sampling_interval=1
     )
     bounded_collector = AsyncioBoundedSemaphoreCollector(
-        context_bridge=ContextBridge()
+        context_bridge=ContextBridge(), sampling_interval=1
     )
     condition_collector = AsyncioConditionCollector(
-        context_bridge=ContextBridge()
+        context_bridge=ContextBridge(), sampling_interval=1
     )
     original_lock_class = asyncio.Lock
     original_semaphore_class = asyncio.Semaphore
@@ -69,6 +71,7 @@ def test_asyncio_lock_collector_captures_wait_and_hold_duration():
     tracer = TracerProvider().get_tracer("test")
     collector = AsyncioLockCollector(
         context_bridge=bridge,
+        sampling_interval=1,
         max_frames=32,
     )
 
@@ -122,6 +125,7 @@ def test_asyncio_semaphore_collector_captures_wait_and_hold_duration():
     tracer = TracerProvider().get_tracer("test")
     collector = AsyncioSemaphoreCollector(
         context_bridge=bridge,
+        sampling_interval=1,
         max_frames=32,
     )
 
@@ -175,6 +179,7 @@ def test_asyncio_condition_collector_captures_wait_duration():
     tracer = TracerProvider().get_tracer("test")
     collector = AsyncioConditionCollector(
         context_bridge=bridge,
+        sampling_interval=1,
         max_frames=32,
     )
 
