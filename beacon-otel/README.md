@@ -105,6 +105,18 @@ requests retain their own `evidence_id` (`occurrence_id`) and trace/span IDs whi
 sharing the stable `finding_id`. Occurrences without a trace are also exported.
 A trace ID does not guarantee that a receiver retained the trace.
 
+Security delivery prioritizes suspected attack evidence, then coverage/delivery
+diagnostics, then ordinary occurrences. A higher-priority arrival can evict the
+oldest queued record of a lower priority; equal-priority records remain FIFO.
+Within the existing per-second event and byte limits, 20% is reserved for attack
+evidence and 20% for diagnostics. Higher priorities may use unused lower pools.
+Each reserve is at least one event/byte when capacity permits; very small limits
+can leave no ordinary capacity. A record larger than its available byte pools
+can still be dropped. Loss diagnostics also consume the Security budget.
+`security.priority_evicted`, `security.queue_full`, `security.budget_exceeded`
+and per-priority budget counters expose losses. Individual occurrence and trace
+identities are retained; delivery remains bounded best effort.
+
 `BEACON_SECURITY_FINDINGS_SAMPLE_SECONDS` (default `300`) limits full-evidence
 sampling, independently of occurrence delivery and OpenTelemetry trace sampling.
 Lightweight occurrences have `evidence_sampled=false`, a bounded
