@@ -59,6 +59,12 @@ Beacon Security itself, and explicitly configured prefixes. Findings are
 bounded modeled-flow observations or candidate risks, not confirmed
 vulnerability reports.
 
+Call rewriting preserves the caller module for standard-library namedtuple,
+typing and Enum factories. Standard logging and `warnings.warn` ignore Security
+helper frames when interpreting `stacklevel`, including aliases and partials.
+Custom frame-inspecting callables and exception tracebacks can still expose
+the call observation helpers.
+
 Runtime SBOM collection is enabled by default only after Security itself is
 enabled. Findings and SBOM snapshots use the existing OpenTelemetry Logs
 pipeline. Local files are off by default:
