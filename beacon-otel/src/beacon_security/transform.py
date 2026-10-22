@@ -152,11 +152,10 @@ class Transformer(ast.NodeTransformer):
         if (
             self.functions
             and isinstance(node.op, ast.Add)
-            and isinstance(node.target, ast.Name)
-        ):
-            target = ast.copy_location(
-                ast.Name(node.target.id, ast.Load()), node.target
+            and isinstance(
+                node.target, (ast.Name, ast.Attribute, ast.Subscript)
             )
+        ):
             # A generator can resume under a different Context; a context token
             # must not span yield/yield-from. Keep the native operation and flag
             # the propagation boundary instead of adding a caller-owned token.
@@ -173,8 +172,14 @@ class Transformer(ast.NodeTransformer):
                     node,
                 )
                 return ast.copy_location(
-                    ast.AugAssign(node.target, node.op, value), node
+                    ast.AugAssign(self.visit(node.target), node.op, value),
+                    node,
                 )
+            if not isinstance(node.target, ast.Name):
+                return self.augmented_target(node)
+            target = ast.copy_location(
+                ast.Name(node.target.id, ast.Load()), node.target
+            )
             operand = self.helper(
                 "iadd_operand", [target, self.visit(node.value)], node
             )
@@ -195,6 +200,44 @@ class Transformer(ast.NodeTransformer):
                 node,
             )
         return self.generic_visit(node)
+
+    def augmented_target(self, node):
+        attribute = isinstance(node.target, ast.Attribute)
+        key = (
+            ast.Constant(self.attribute_name(node.target.attr))
+            if attribute
+            else self._key(node.target.slice)
+        )
+        manager = self.helper(
+            "AugmentedTarget",
+            [
+                self.visit(node.target.value),
+                key,
+                ast.Constant("attribute" if attribute else "subscript"),
+                self.location(node),
+            ],
+            node,
+        )
+        target = ast.Attribute(
+            self.helper("iadd_target", [], node), "value", ast.Store()
+        )
+        left = ast.Attribute(
+            self.helper("iadd_target", [], node), "value", ast.Load()
+        )
+        operand = self.helper(
+            "iadd_operand", [left, self.visit(node.value)], node
+        )
+        return ast.copy_location(
+            ast.With(
+                [ast.withitem(manager)],
+                [
+                    ast.copy_location(
+                        ast.AugAssign(target, node.op, operand), node
+                    )
+                ],
+            ),
+            node,
+        )
 
     def _key(self, node):
         if isinstance(node, ast.Slice):
@@ -233,16 +276,22 @@ class Transformer(ast.NodeTransformer):
     def visit_Attribute(self, node):
         if not self.functions or not isinstance(node.ctx, ast.Load):
             return self.generic_visit(node)
-        name = node.attr
+        return self.helper(
+            "attribute",
+            [
+                self.visit(node.value),
+                ast.Constant(self.attribute_name(node.attr)),
+                self.location(node),
+            ],
+            node,
+        )
+
+    def attribute_name(self, name):
         if self.classes and name.startswith("__") and not name.endswith("__"):
             class_name = self.classes[-1].lstrip("_")
             if class_name:
                 name = "_" + class_name + name
-        return self.helper(
-            "attribute",
-            [self.visit(node.value), ast.Constant(name), self.location(node)],
-            node,
-        )
+        return name
 
     def sensitive(self, node):
         if isinstance(node.func, ast.Name):

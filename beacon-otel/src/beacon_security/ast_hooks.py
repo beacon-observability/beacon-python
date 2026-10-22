@@ -94,6 +94,50 @@ class AugmentedAdd:
         self.token = self.observation = None
 
 
+class AugmentedTarget(AugmentedAdd):
+    __slots__ = ("target", "key", "kind", "location", "left", "reads")
+
+    def __init__(self, target, key, kind, location):
+        self.target, self.key, self.kind = target, key, kind
+        self.location = location
+
+    def __enter__(self):
+        # A failing descriptor/item read must not publish a context token.
+        read = attribute if self.kind == "attribute" else subscript
+        self.left = read(self.target, self.key, self.location)
+        self.reads = 0
+        super().__enter__()
+
+    @property
+    def value(self):
+        value = self.left
+        self.reads += 1
+        if self.reads == 2:
+            # The native opcode and iadd_operand now own the operand; retaining
+            # another reference would change CPython string reuse behavior.
+            self.left = None
+        return value
+
+    @value.setter
+    def value(self, result):
+        # A business setter may itself call a sink. Publish marks first.
+        iadd_result(result, self.location)
+        if self.kind == "attribute":
+            setattr(self.target, self.key, result)
+        else:
+            self.target[self.key] = result
+
+    def __exit__(self, *error):
+        try:
+            super().__exit__(*error)
+        finally:
+            self.target = self.key = self.left = None
+
+
+def iadd_target():
+    return _IADD.get()
+
+
 def iadd_operand(left, right):
     state = runtime.current_state()
     if (
@@ -109,6 +153,12 @@ def iadd_operand(left, right):
                 right_marks,
                 len(left),
             )
+    elif (
+        state is not None
+        and state.objects
+        and (state.marks(left) or state.marks(right))
+    ):
+        state.gap("unmodeled_iadd")
     return right
 
 
