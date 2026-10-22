@@ -69,6 +69,12 @@ Collection eligibility (the enabled flag, include selector and runtime support)
 is captured when a Security runtime starts; environment changes require a
 restart. Control-file pause/resume and verification runs remain dynamic.
 
+String and bytes `+=` propagation includes variable, attribute and subscript
+targets. Target reads, right-hand expressions and writes retain native order;
+setters can observe the propagated marks. Generator suspension in a right-hand
+expression reports `generator_iadd_propagation`; marked inputs to custom
+`__iadd__` implementations report `unmodeled_iadd`.
+
 Runtime SBOM collection is enabled by default only after Security itself is
 enabled. Findings and SBOM snapshots use the existing OpenTelemetry Logs
 pipeline. Local files are off by default:
