@@ -7,12 +7,12 @@
   },
   "upstream": {
     "repository": "https://github.com/open-telemetry/opentelemetry-python-contrib.git",
-    "releaseTag": "v0.65b0",
-    "releaseCommit": "a5470c666947acddc24fd4064ec7c1b169dfe8b6"
+    "releaseTag": "v0.66b1",
+    "releaseCommit": "a22d03307b27d958ca9dc340a3514ae1898f63e7"
   },
   "core": {
     "repository": "https://github.com/open-telemetry/opentelemetry-python.git",
-    "releaseTag": "v1.44.0",
-    "releaseCommit": "53a5a40c9604583c501bcf13970a635f00e62df4"
+    "releaseTag": "v1.45.1",
+    "releaseCommit": "14971cef9c84c2354cbaf6871090896fad0f9a1a"
   }
 }
