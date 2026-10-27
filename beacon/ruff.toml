@@ -1,0 +1,48 @@
+# Beacon-owned lint policy, preserved across upstream synchronization.
+# https://docs.astral.sh/ruff/configuration/
+target-version = "py310"
+line-length = 79
+extend-exclude = ["_template", "*_pb2*.py*"]
+output-format = "concise"
+
+[lint]
+# https://docs.astral.sh/ruff/linter/#rule-selection
+# pylint: https://github.com/astral-sh/ruff/issues/970
+select = [
+  "I",   # isort
+  "F",   # pyflakes
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+  "PLC", # pylint convention
+  "PLE", # pylint error
+  "Q",   # flake8-quotes
+  "A",   # flake8-builtins
+  "TID", # flake8-tidy-imports
+]
+ignore = [
+  "E501", # line-too-long
+]
+
+[lint.per-file-ignores]
+"docs/**/*.*" = ["A001"]
+"instrumentation-genai/opentelemetry-instrumentation-google-genai/tests/*" = ["TID252"]
+# Security defers imports until the explicit opt-in gate has passed and uses
+# package-relative imports to keep that private lifecycle self-contained.
+"beacon-otel/src/beacon_security/**/*.py" = ["PLC0415", "TID252"]
+# Contract tests deliberately reload process-global instrumentation modules;
+# local imports keep those lifecycles isolated between tests.
+"beacon-otel/tests/security/**/*.py" = ["E402", "PLC0415"]
+
+[lint.isort]
+detect-same-package = false # to not consider instrumentation packages as first-party
+known-first-party = ["opentelemetry"]
+known-third-party = [
+  "psutil",
+  "pytest",
+  "redis",
+  "redis_opentracing",
+  "opencensus",
+]
+
+
+# https://github.com/microsoft/pyright/blob/main/docs/configuration.md#type-check-rule-overrides

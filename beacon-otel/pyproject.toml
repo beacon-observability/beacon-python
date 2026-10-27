@@ -25,21 +25,21 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-  "opentelemetry-api == 1.44.0",
-  "opentelemetry-sdk == 1.44.0",
-  "opentelemetry-instrumentation == 0.65b0",
-  "opentelemetry-instrumentation-threading == 0.65b0",
-  "opentelemetry-exporter-otlp == 1.44.0",
+  "opentelemetry-api == 1.45.1",
+  "opentelemetry-sdk == 1.45.1",
+  "opentelemetry-instrumentation == 0.66b1",
+  "opentelemetry-instrumentation-threading == 0.66b1",
+  "opentelemetry-exporter-otlp == 1.45.1",
   "packaging >= 24",
   "wrapt >= 1.17, < 3",
 ]
 
 [project.optional-dependencies]
 profiling = ["beacon-profiling == 1.2.1"]
-requests = ["opentelemetry-instrumentation-requests == 0.65b0"]
-flask = ["opentelemetry-instrumentation-flask == 0.65b0"]
-fastapi = ["opentelemetry-instrumentation-fastapi == 0.65b0"]
-django = ["opentelemetry-instrumentation-django == 0.65b0"]
+requests = ["opentelemetry-instrumentation-requests == 0.66b1"]
+flask = ["opentelemetry-instrumentation-flask == 0.66b1"]
+fastapi = ["opentelemetry-instrumentation-fastapi == 0.66b1"]
+django = ["opentelemetry-instrumentation-django == 0.66b1"]
 
 [project.scripts]
 beacon = "beacon_otel.cli:main"
