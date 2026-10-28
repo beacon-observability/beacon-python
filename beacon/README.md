@@ -6,6 +6,8 @@ The primary development branch is `main`. The initial import preserved the legac
 
 Stable release `1.2.1` fixes Security request lifecycles, propagation and SQL analysis, and bounds Profiling collection, shutdown and export overhead. See [release notes](releases/1.2.1.md) for all fixes.
 
+Version `1.2.2` is prepared for the Contrib `v0.66b1` / Core `v1.45.1` baseline. It is pending release; see [candidate release notes](releases/1.2.2.md). The latest published version remains `1.2.1` until protected publication and public-artifact acceptance complete.
+
 ## Code and Validation Resources
 
 | Item | Location |
