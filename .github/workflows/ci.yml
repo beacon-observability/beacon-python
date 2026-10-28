@@ -73,7 +73,7 @@ jobs:
             'fastapi>=0.141,<0.142' 'starlette>=1.6,<1.7' \
             'uvicorn>=0.52,<0.53' gunicorn httpx requests aiohttp \
             'sqlalchemy>=2,<3' 'psycopg[binary]>=3,<4' 'pymysql>=1,<2' \
-            python-multipart psutil
+            python-multipart psutil 'trio>=0.30,<1'
       - name: Test Beacon Security runtime
         if: matrix.python-version != '3.10'
         run: .beacon-test-env/bin/python -m pytest -q beacon-otel/tests/security
