@@ -1,2 +1,2 @@
 # Generated from beacon/version.properties by beacon/scripts/check-version.py.
-__version__ = "1.2.2"
+__version__ = "1.2.3"
