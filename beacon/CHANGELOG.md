@@ -2,12 +2,12 @@
 
 ## Unreleased
 
-## 1.2.3 (pending publication)
+## 1.2.3 (2026-10-30)
 
 - Converge Python Security telemetry on schema v2 while preserving fingerprint v1.
 - Publish only finding and successful SBOM inventory events; simplify finding payloads and local exception matching.
 
-The matching `beacon-otel` and `beacon-profiling` packages are being prepared at version `1.2.3`; see [candidate release notes](releases/1.2.3.md).
+The matching `beacon-otel` and `beacon-profiling` packages were published at version `1.2.3`; see [release notes](releases/1.2.3.md) and [public-artifact verification](validation/1.2.3.md).
 
 ## 1.2.2 (2026-10-28)
 
