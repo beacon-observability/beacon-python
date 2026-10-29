@@ -4,7 +4,7 @@ import datetime as dt
 import hashlib
 import re
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 FINGERPRINT_VERSION = 1
 PRODUCT = "io.beacon.security"
 
@@ -135,23 +135,14 @@ def trace_id(value, length):
     )
 
 
-def component_reference(value=None, application_id=""):
+def component_reference(value=None):
     value = value or {}
+    if value.get("name") is None:
+        return {}
     return {
-        "status": value.get("status", "unresolved"),
-        "sbom_id": value.get("sbom_id", ""),
-        "revision": value.get("revision"),
-        "release_id": value.get("release_id", ""),
-        "application_id": value.get("application_id", application_id),
-        "bom-ref": value.get("bom-ref", ""),
-        "reason": value.get(
-            "reason",
-            ""
-            if value.get("status") == "resolved"
-            else "component_not_resolved",
-        ),
-        "observed_url": value.get("observed_url", ""),
-        "query": value.get("query", ""),
+        key: value[key]
+        for key in ("name", "version", "hash")
+        if value.get(key) is not None
     }
 
 
@@ -203,8 +194,7 @@ def event_record(original, identity=None):
     name = event.get("event_name")
     event["source"] = (
         "beacon_security_sbom"
-        if name == "beacon.security.sbom.snapshot"
-        or str(name).startswith("beacon.security.sbom.")
+        if name == "beacon.security.sbom.inventory"
         else "beacon_security"
     )
     event.setdefault(
@@ -213,10 +203,7 @@ def event_record(original, identity=None):
         .isoformat(timespec="milliseconds")
         .replace("+00:00", "Z"),
     )
-    if event.get("event_name") in (
-        "beacon.security.finding",
-        "beacon.security.collection.incomplete",
-    ):
+    if event.get("event_name") == "beacon.security.finding":
         event["request"] = request_fields(event.get("request"))
         event["trace_id"] = trace_id(event.get("trace_id"), 32)
         event["server_span_id"] = (
@@ -236,9 +223,7 @@ def event_record(original, identity=None):
         )
         event["trace_availability"] = "not_guaranteed_by_trace_id"
     if event.get("event_name") == "beacon.security.finding":
-        event["component"] = component_reference(
-            event.get("component"), event.get("application_id", "")
-        )
+        event["component"] = component_reference(event.get("component"))
         event.setdefault("stack", [])
     if name == "beacon.security.finding":
         event.setdefault(
@@ -249,34 +234,4 @@ def event_record(original, identity=None):
                 "outcome": "not_assessed",
             },
         )
-    if name == "beacon.security.collection.incomplete":
-        event["counts"] = {
-            "objects": None,
-            "nodes": None,
-            "sources": None,
-            "findings": None,
-            "retained_bytes": None,
-            **event.get("counts", {}),
-        }
-        event.setdefault("collection_status", "unknown")
-    if name == "beacon.security.sbom.snapshot":
-        event.setdefault("status", "current")
-        event.setdefault("dropped_observations", 0)
-    if name == "beacon.security.sbom.health":
-        defaults = {
-            "sbom_id": "",
-            "revision": 0,
-            "release_id": "",
-            "status": "initializing",
-            "last_refresh_at": None,
-            "last_failure_at": None,
-            "last_error_type": None,
-            "current_components": None,
-            "history_count": None,
-            "completeness": "incomplete",
-            "reasons": [],
-            "dropped_observations": 0,
-        }
-        for key, value in defaults.items():
-            event.setdefault(key, value)
     return event

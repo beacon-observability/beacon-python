@@ -76,7 +76,7 @@ expression reports `generator_iadd_propagation`; marked inputs to custom
 `__iadd__` implementations report `unmodeled_iadd`.
 
 Runtime SBOM collection is enabled by default only after Security itself is
-enabled. Findings and SBOM snapshots use the existing OpenTelemetry Logs
+enabled. Findings and dependency inventories use the existing OpenTelemetry Logs
 pipeline. Local files are off by default:
 
 | Environment variable | Default | Purpose |
@@ -85,6 +85,8 @@ pipeline. Local files are off by default:
 | `BEACON_SECURITY_PYTHON_INCLUDE` | empty | Comma-separated application module prefixes required for finding collection. |
 | `BEACON_SECURITY_PYTHON_EXCLUDE` | empty | Comma-separated exclusions, which take precedence. |
 | `BEACON_SECURITY_SBOM_ENABLED` | `true` | Enable runtime SBOM within an enabled lifecycle. |
+| `BEACON_SECURITY_SBOM_REFRESH_SECONDS` | `300` | Delay after each completed inventory collection. |
+| `BEACON_SECURITY_SBOM_CACHE_SECONDS` | `300` | Reuse unchanged artifact metadata. |
 | `BEACON_SECURITY_LOCAL_OUTPUT_ENABLED` | `false` | Enable process-local diagnostic files. |
 | `BEACON_SECURITY_OUTPUT` | `./beacon-security-output/<instance-id>` | Diagnostic snapshot directory. |
 | `BEACON_SECURITY_EVIDENCE_FILE` | unset | Optional diagnostic JSONL file. |
@@ -93,6 +95,8 @@ For local inspection without an OTLP backend, additionally set
 `BEACON_SECURITY_LOCAL_OUTPUT_ENABLED=true`, choose the output paths, and set
 `OTEL_LOGS_EXPORTER=none`. Local files are diagnostic evidence, not durable or
 cluster-wide delivery.
+`BEACON_SECURITY_EVIDENCE_FILE` can be enabled independently of the other local
+snapshots.
 
 Gunicorn must initialize OpenTelemetry after each worker fork. Do not prefix
 this command with `beacon` or `opentelemetry-instrument`, and do not enable
@@ -113,40 +117,47 @@ SBOM contract is maintained in
 This wheel carries an immutable contract revision in
 [`security-spec.properties`](src/beacon_security/security-spec.properties).
 
-### Finding occurrences and detail sampling
+### Security telemetry v2
 
-Security exports one `beacon.security.finding` occurrence per finding fingerprint
-per request. Repeated detections within a request share an evidence ID; different
-requests retain their own `evidence_id` (`occurrence_id`) and trace/span IDs while
-sharing the stable `finding_id`. Occurrences without a trace are also exported.
-A trace ID does not guarantee that a receiver retained the trace.
+The OTel Logs output contains only two INFO events:
 
-Security delivery prioritizes suspected attack evidence, then coverage/delivery
-diagnostics, then ordinary occurrences. A higher-priority arrival can evict the
-oldest queued record of a lower priority; equal-priority records remain FIFO.
-Within the existing per-second event and byte limits, 20% is reserved for attack
-evidence and 20% for diagnostics. Higher priorities may use unused lower pools.
-Each reserve is at least one event/byte when capacity permits; very small limits
-can leave no ordinary capacity. A record larger than its available byte pools
-can still be dropped. Loss diagnostics also consume the Security budget.
-`security.priority_evicted`, `security.queue_full`, `security.budget_exceeded`
-and per-priority budget counters expose losses. Individual occurrence and trace
-identities are retained; delivery remains bounded best effort.
+| `source` | `event_name` | Trigger |
+| --- | --- | --- |
+| `beacon_security` | `beacon.security.finding` | One matched finding per request and fingerprint. |
+| `beacon_security_sbom` | `beacon.security.sbom.inventory` | Every successful dependency collection, including unchanged and empty lists. |
 
-`BEACON_SECURITY_FINDINGS_SAMPLE_SECONDS` (default `300`) limits full-evidence
-sampling, independently of occurrence delivery and OpenTelemetry trace sampling.
-Lightweight occurrences have `evidence_sampled=false`, a bounded
-`evidence_sample_reason`, empty `sources`, `propagation`, `ranges`, and `stack`,
-and `truncation_reason=evidence_sampled_out`. Empty evidence arrays do not mean
-there was no taint. Identity, sink, request context, and correlation remain.
+The inventory worker starts asynchronously and waits 300 seconds after each
+collection by default (`BEACON_SECURITY_SBOM_REFRESH_SECONDS`). A failed or
+incomplete collection emits nothing, leaving the last successful list intact.
+Each event contains `instance_id`, `observed_at`, process `started_at`,
+`uptime_ms`, and the complete current `dependencies` list. Each loaded library
+is identified by `name`, `version`, and an MD5 identity key over the compact
+JSON array `[name,version]`; the key is not a content digest. Large inventories
+use `part_index` and `part_count` only when split. Consumers should replace the
+previous list only after all parts for one `instance_id + observed_at` arrive.
 
-`occurrences_total` counts requests per finding in this process. When aggregation
-capacity is exceeded, `aggregation_status=capacity_exceeded` accompanies the
-occurrence and the unavailable total is omitted. Otherwise status is `tracked`.
-The representative snapshot can describe an earlier request than `last_trace_id`.
-Queues, rate limits, and byte budgets still bound export; health counters expose
-loss. Very small byte limits can produce `beacon.security.export.truncated`
-envelopes. Occurrence export can increase log volume and is not durable delivery.
+Findings retain a stable `finding_id` (fingerprint v1), a per-request
+`occurrence_id`, rule, sink, attack-evidence status and reason, request and Trace
+correlation, and sampled propagation evidence. The normal full-evidence sample
+interval is 300 seconds (`BEACON_SECURITY_FINDINGS_SAMPLE_SECONDS`). An
+unsampled occurrence still reports the finding with `evidence_sampled=false`
+and `evidence_sample_reason=interval`; this is not a real truncation. Only
+actual capacity or serialization loss sets `truncated=true`.
+
+The exported body omits service/runtime/code fields already in the OTel
+Resource, empty optional fields, fixed placeholders, `evidence_id`, and online
+`occurrences_total`. Resolved `component` data directly carries
+`name`/`version`/`hash`; unresolved components are omitted. The backend can
+deduplicate by `instance_id + occurrence_id` and group by `finding_id`.
+Security does not send separate health, summary, collection-failure, dropped,
+or truncated-record diagnostic events. Queues and rate budgets are bounded;
+failed or oversized events can be dropped. Stronger attack evidence retains a
+20% security-channel budget reserve. OTel API emission is not a backend ACK.
+Full representative evidence and cumulative finding counters remain in memory
+only when local diagnostic output is enabled. Local `control.json` exception
+scopes match the stable `finding_id`, so a process restart does not invalidate
+an exception. The local CycloneDX file is the current snapshot with version 1;
+no SBOM history file is maintained.
 
 ### Request body tracking budgets
 
@@ -161,12 +172,11 @@ bounded explicitly, and unchanged request/process memory limits still apply.
 
 ### Request-specific attack evidence
 
-A finding's code-risk `assessment` and `validation=unvalidated` are independent
-of `attack_evidence`. Its status is `unknown` for unsupported or imprecise
+A finding's `attack_evidence` status is `unknown` for unsupported or imprecise
 analysis, `no_evidence` when supported analysis finds no exploitation evidence,
 or `suspected` when tainted input controls supported syntax. Reasons are bounded
-machine-readable values without captured request data. `outcome=not_assessed`
-remains explicit: an invocation, normal return, or HTTP status cannot establish
+machine-readable values without captured request data. An invocation, normal
+return, or HTTP status cannot establish
 successful exploitation. `no_evidence` is not a safety verdict.
 
 Set `BEACON_SECURITY_ANALYSIS_SQL_DIALECT=ansi` to enable the bounded ANSI lexical

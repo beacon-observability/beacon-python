@@ -164,25 +164,22 @@ def test_same_request_upgrades_keep_identity_and_count_once(
         upgrade = detect(state, "1 OR 1=1")
         assert upgrade["attack_evidence"]["status"] == "suspected"
         assert {
-            first["evidence_id"],
-            unknown["evidence_id"],
-            upgrade["evidence_id"],
-        } == {first["evidence_id"]}
+            first["occurrence_id"],
+            unknown["occurrence_id"],
+            upgrade["occurrence_id"],
+        } == {first["occurrence_id"]}
         assert len(state.pending) == 1
         assert detect(state, "16") is None
         event = ledger.end(state)[0]
-        assert event["occurrences_total"] == 1
+        assert "occurrences_total" not in event
         finding = ledger._findings[event["finding_id"]]
-        assert finding["attack_evidence_counts"] == {
-            "unknown": 0,
-            "no_evidence": 0,
-            "suspected": 1,
-        }
+        assert finding["strongest_evidence_rank"] > 0
+        assert "representative" not in finding
     finally:
         state.close()
 
 
-def test_request_evidence_and_representative_are_independent(
+def test_request_evidence_upgrades_without_retaining_production_representative(
     monkeypatch, tmp_path
 ) -> None:
     monkeypatch.setenv("BEACON_SECURITY_ENABLED", "true")
@@ -215,16 +212,12 @@ def test_request_evidence_and_representative_are_independent(
     ]
     assert events[1]["evidence_sample_reason"] == "evidence_upgrade"
     assert len({event["finding_id"] for event in events}) == 1
-    assert len({event["evidence_id"] for event in events}) == 4
+    assert len({event["occurrence_id"] for event in events}) == 4
     finding = ledger._findings[events[0]["finding_id"]]
-    assert finding["attack_evidence_counts"] == {
-        "unknown": 1,
-        "no_evidence": 2,
-        "suspected": 1,
-    }
-    assert finding["representative"]["trace_id"] == events[1]["trace_id"]
-    assert finding["last_trace_id"] == events[-1]["trace_id"]
-    assert finding["strongest_attack_evidence"]["status"] == "suspected"
+    assert "attack_evidence_counts" not in finding
+    assert "representative" not in finding
+    assert "last_trace_id" not in finding
+    assert "strongest_attack_evidence" not in finding
     assert all(
         event["attack_evidence"]["outcome"] == "not_assessed"
         for event in events

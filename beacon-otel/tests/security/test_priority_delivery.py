@@ -13,18 +13,26 @@ RUN_CHANNEL = Exporter._run_channel
 
 def event(index, priority=0, size=100):
     return {
-        "event_name": "beacon.security.collection.incomplete"
-        if priority == 1
-        else "beacon.security.finding",
-        "attack_evidence": {
-            "status": "suspected" if priority == 2 else "no_evidence"
+        "event_name": "beacon.security.finding",
+        "instance_id": "233cf30d-c73b-4365-b052-0e7159ee6268",
+        "finding_id": "finding-" + "a" * 64,
+        "fingerprint_version": 1,
+        "rule": "sql_injection",
+        "sink": {
+            "function": "db.execute",
+            "role": "sql_template",
+            "location": "qa#sink",
         },
-        "finding_id": "shared-finding",
+        "attack_evidence": {
+            "status": "suspected" if priority == 2 else "no_evidence",
+            "reason": "qa",
+        },
         "occurrence_id": f"request-{index}",
-        "evidence_id": f"request-{index}",
         "trace_id": f"{index + 1:032x}",
         "server_span_id": f"{index + 1:016x}",
-        "size": size,
+        "evidence_sampled": True,
+        "collection_complete": True,
+        "run": {"size": size},
     }
 
 
@@ -38,6 +46,7 @@ def paused_exporter(monkeypatch, tmp_path):
     monkeypatch.setattr(Exporter, "_run_channel", lambda *_: None)
     monkeypatch.setattr(Exporter, "_monitor_loop", lambda *_: None)
     exporter = Exporter({}, "priority", tmp_path)
+    assert exporter._monitor is None
     try:
         yield exporter
     finally:
@@ -99,7 +108,7 @@ def test_full_queue_evicts_lower_priority_preserving_context_and_counts(
         exporter._security_queue.task_done()
     assert [entry.event["occurrence_id"] for entry in entries] == [
         "request-4",
-        "request-3",
+        "request-1",
         "request-2",
     ]
     from opentelemetry.trace import get_current_span
@@ -109,8 +118,8 @@ def test_full_queue_evicts_lower_priority_preserving_context_and_counts(
         assert context.trace_id == int(entry.event["trace_id"], 16)
         assert context.span_id == int(entry.event["server_span_id"], 16)
     counters = exporter.delivery()["counters"]
-    assert counters["security.priority_evicted"] == 2
-    assert counters["security.queue_full"] == 1
+    assert counters["security.priority_evicted"] == 1
+    assert counters["security.queue_full"] == 2
     assert exporter.delivery()["security_dropped"] == 3
     assert exporter.flush(timeout=0)
     assert all("source" not in original for original in originals)
@@ -130,7 +139,7 @@ def test_lower_or_equal_priority_cannot_replace_attack_evidence(
     assert exporter.delivery()["counters"]["security.queue_full"] == 2
 
 
-def test_late_attacks_and_coverage_survive_spent_ordinary_event_budget(
+def test_late_attacks_survive_spent_ordinary_event_budget(
     paused_exporter, monkeypatch
 ):
     exporter = paused_exporter
@@ -149,10 +158,11 @@ def test_late_attacks_and_coverage_survive_spent_ordinary_event_budget(
     ids = [record["occurrence_id"] for record, _, _ in emitted]
     assert ids == [f"request-{i}" for i in range(6)] + [
         "request-100",
-        "request-101",
+        "request-6",
+        "request-7",
     ]
     assert len(emitted) <= 10 and len(set(ids)) == len(ids)
-    assert exporter.delivery()["counters"]["security.budget_exceeded"] == 2
+    assert exporter.delivery()["counters"]["security.budget_exceeded"] == 1
 
 
 def test_byte_reserves_and_oversized_rejection_keep_total_bound(
@@ -165,7 +175,7 @@ def test_byte_reserves_and_oversized_rejection_keep_total_bound(
     monkeypatch.setattr(
         exporter,
         "_encode_record_result",
-        lambda record: (b"x" * record["size"], False),
+        lambda record: (b"x" * record["run"]["size"], False),
     )
     for index in range(8):
         exporter.emit(event(index))
@@ -178,13 +188,12 @@ def test_byte_reserves_and_oversized_rejection_keep_total_bound(
 
     emitted = drain(exporter, monkeypatch, late)
     assert sum(len(body.encode()) for _, body, _ in emitted) == 1000
-    assert [record["occurrence_id"] for record, _, _ in emitted][-2:] == [
-        "request-100",
-        "request-101",
+    assert "request-100" in [
+        record["occurrence_id"] for record, _, _ in emitted
     ]
-    assert exporter.delivery()["counters"]["security.budget_exceeded"] == 3
+    assert exporter.delivery()["counters"]["security.budget_exceeded"] == 2
     assert (
-        exporter.delivery()["counters"]["security.priority_2.budget_exceeded"]
+        exporter.delivery()["counters"]["security.priority_1.budget_exceeded"]
         == 1
     )
 
@@ -282,13 +291,12 @@ def test_real_json_byte_budget_preserves_late_priority_records(
             exporter.emit(event(2001, 1))
 
     emitted = drain(exporter, monkeypatch, late)
-    assert len(emitted) == 8
+    assert len(emitted) == 9
     assert sum(len(body.encode()) for _, body, _ in emitted) <= size * 10
-    assert [record["occurrence_id"] for record, _, _ in emitted][-2:] == [
-        "request-2000",
-        "request-2001",
+    assert "request-2000" in [
+        record["occurrence_id"] for record, _, _ in emitted
     ]
-    assert exporter.delivery()["counters"]["security.budget_exceeded"] == 2
+    assert exporter.delivery()["counters"]["security.budget_exceeded"] == 1
 
 
 def test_tiny_budget_reserves_priority_slots_without_exceeding_limit(
@@ -304,12 +312,12 @@ def test_tiny_budget_reserves_priority_slots_without_exceeding_limit(
     emitted = drain(exporter, monkeypatch)
     assert [record["occurrence_id"] for record, _, _ in emitted] == [
         "request-2",
-        "request-3",
+        "request-1",
     ]
     assert exporter.delivery()["counters"]["security.budget_exceeded"] == 1
 
 
-def test_loss_diagnostics_share_the_hard_total_budget(
+def test_loss_diagnostics_never_enter_the_export_queue(
     paused_exporter, monkeypatch
 ):
     exporter = paused_exporter
@@ -321,5 +329,5 @@ def test_loss_diagnostics_share_the_hard_total_budget(
         record["event_name"] = "beacon.security.export.dropped"
         exporter.emit(record)
     emitted = drain(exporter, monkeypatch)
-    assert len(emitted) == 8
-    assert exporter.delivery()["counters"]["security.budget_exceeded"] == 4
+    assert emitted == []
+    assert exporter.delivery()["security_queue_depth"] == 0

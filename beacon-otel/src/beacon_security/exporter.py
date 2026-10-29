@@ -7,16 +7,18 @@ import sys
 import threading
 import time
 from collections import deque
+from collections.abc import Mapping
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from . import config
 from .ledger import RuntimeLedger
 from .schema import PRODUCT, event_record
+from .telemetry import FINDING, INVENTORY, project_event
 
 
 def _json_default(value: Any) -> Any:
@@ -52,14 +54,6 @@ def _priority(event: Mapping[str, Any]) -> int:
     if event.get("event_name") == "beacon.security.finding" and (
         isinstance(attack, Mapping) and attack.get("status") == "suspected"
     ):
-        return 2
-    name = str(event.get("event_name", ""))
-    if name in {
-        "beacon.security.collection.incomplete",
-        "beacon.security.snapshot.failed",
-        "beacon.security.export.dropped",
-        "beacon.security.export.truncated",
-    } or name.startswith("beacon.security.instrumentation."):
         return 1
     return 0
 
@@ -68,7 +62,7 @@ class _SecurityQueue(queue.Queue):
     """FIFO within each priority; only higher priority can evict a queued entry."""
 
     def _init(self, maxsize: int) -> None:
-        self.queue = (deque(), deque(), deque())
+        self.queue = (deque(), deque())
 
     def _qsize(self) -> int:
         return sum(map(len, self.queue))
@@ -100,10 +94,10 @@ class _SecurityQueue(queue.Queue):
 
 
 class _PriorityBudget:
-    """Reserve 20% each for attack evidence and coverage diagnostics.
+    """Reserve 20% for stronger attack evidence.
 
     Higher priorities may use unused lower pools, never the reverse. Event and
-    byte limits remain hard totals, even for delivery-loss diagnostics.
+    byte limits remain hard totals.
     """
 
     events: list[int]
@@ -116,8 +110,7 @@ class _PriorityBudget:
     @staticmethod
     def _pools(limit: int) -> list[int]:
         attack = min(limit, max(1, limit // 5))
-        diagnostic = min(limit - attack, max(1, limit // 5))
-        return [limit - attack - diagnostic, diagnostic, attack]
+        return [limit - attack, attack]
 
     @staticmethod
     def _consume(pools: list[int], priority: int, amount: int) -> None:
@@ -155,7 +148,6 @@ class Exporter:
         self._counters: dict[str, int] = {}
         self._counter_lock = threading.Lock()
         self._loss_lock = threading.Lock()
-        self._pending_dropped = {"security": 0, "sbom": 0}
         self._dropped = 0
         self._dropped_by_channel = {"security": 0, "sbom": 0}
         self._running = True
@@ -176,7 +168,7 @@ class Exporter:
         configured_file = config.text("beacon.security.evidence.file", "")
         self._file = (
             Path(configured_file).expanduser().absolute()
-            if local_output_enabled and configured_file
+            if configured_file
             else None
         )
         self._max_bytes = config.limit(
@@ -206,10 +198,14 @@ class Exporter:
             name="BeaconSecurity-sbom-export",
             daemon=True,
         )
-        self._monitor = threading.Thread(
-            target=self._monitor_loop,
-            name="BeaconSecurity-health",
-            daemon=True,
+        self._monitor = (
+            threading.Thread(
+                target=self._monitor_loop,
+                name="BeaconSecurity-health",
+                daemon=True,
+            )
+            if local_output_enabled
+            else None
         )
         self._flush_worker = threading.Thread(
             target=self._flush_loop,
@@ -220,7 +216,8 @@ class Exporter:
         self._flush_worker.start()
         self._security_worker.start()
         self._sbom_worker.start()
-        self._monitor.start()
+        if self._monitor is not None:
+            self._monitor.start()
 
     def emit(
         self,
@@ -231,18 +228,17 @@ class Exporter:
         """Enqueue one event without blocking or changing the caller's value."""
 
         try:
-            copied = event_record(dict(event), self.ledger.identity)
+            copied = project_event(
+                event_record(dict(event), self.ledger.identity)
+            )
         except BaseException:
             self._loss("beacon.security.invalid_event")
             return
+        if copied is None:
+            return
         try:
             channel = (
-                "sbom"
-                if copied.get("event_name") == "beacon.security.sbom.snapshot"
-                or str(copied.get("event_name", "")).startswith(
-                    "beacon.security.sbom."
-                )
-                else "security"
+                "sbom" if copied.get("event_name") == INVENTORY else "security"
             )
         except BaseException:
             self._loss("beacon.security.invalid_event")
@@ -346,7 +342,6 @@ class Exporter:
         drained = False
         with suppress():
             try:
-                self._emit_pending_loss()
                 snapshot = self.ledger.tick(
                     self.delivery(),
                     lambda event: self.emit(event, evidence=True),
@@ -404,6 +399,8 @@ class Exporter:
                     self._security_worker,
                     self._sbom_worker,
                 ):
+                    if worker is None:
+                        continue
                     if worker is not threading.current_thread():
                         worker.join(timeout=remaining())
                 self._discard_pending(self._security_queue, "security")
@@ -436,7 +433,6 @@ class Exporter:
 
     def _monitor_loop(self) -> None:
         while not self._monitor_stop.is_set():
-            self._emit_pending_loss()
             try:
                 self.ledger.tick(
                     self.delivery(),
@@ -479,10 +475,6 @@ class Exporter:
                 encoded, truncated = self._encode_record_result(entry.event)
                 if truncated:
                     self._record_record_truncation(entry.event, channel)
-                loss_diagnostic = entry.event.get("event_name") in {
-                    "beacon.security.export.dropped",
-                    "beacon.security.sbom.export.dropped",
-                }
                 if channel == "security" and not priority_budget.admit(
                     entry.priority, len(encoded)
                 ):
@@ -491,13 +483,9 @@ class Exporter:
                     )
                     self._loss("security.budget_exceeded", entry.event)
                     continue
-                if (
-                    channel != "security"
-                    and not loss_diagnostic
-                    and (
-                        events >= events_limit
-                        or bytes_used + len(encoded) > bytes_limit
-                    )
+                if channel != "security" and (
+                    events >= events_limit
+                    or bytes_used + len(encoded) > bytes_limit
                 ):
                     if channel != "sbom" or len(encoded) > bytes_limit:
                         self._loss(channel + ".budget_exceeded", entry.event)
@@ -512,9 +500,8 @@ class Exporter:
                             return
                         time.sleep(0.025)
                     second, events, bytes_used = int(time.monotonic()), 0, 0
-                if not loss_diagnostic:
-                    events += 1
-                    bytes_used += len(encoded)
+                events += 1
+                bytes_used += len(encoded)
                 # A byte-budget reduction is still an incomplete security
                 # record.  Preserve it in the local evidence stream even if
                 # the caller did not mark the original event as evidence;
@@ -553,7 +540,7 @@ class Exporter:
 
         if channel != "security" or self._file is None:
             return
-        if not entry.evidence and not self._is_diagnostic(event):
+        if not entry.evidence:
             return
         try:
             with self._writer_lock:
@@ -584,44 +571,20 @@ class Exporter:
             return encoded, False
 
         reduced = dict(event)
+        if event.get("event_name") != FINDING:
+            raise ValueError("record_limit")
         for field in ("propagation", "ranges", "sources", "stack"):
-            if event.get("event_name") == "beacon.security.finding":
-                reduced[field] = []
-            else:
-                reduced.pop(field, None)
-        if event.get("event_name") == "beacon.security.finding":
-            reduced["evidence_sampled"] = False
-            reduced["evidence_sample_reason"] = "record_byte_limit"
+            reduced.pop(field, None)
+        reduced["evidence_sampled"] = False
+        reduced["evidence_sample_reason"] = "record_byte_limit"
         reduced["truncated"] = True
         reduced["truncation_reason"] = "record_byte_limit"
         encoded = _encode_json(reduced)
         if len(encoded) <= self._max_bytes:
             return encoded, True
 
-        summary = {
-            "schema_version": 1,
-            "source": event["source"],
-            "event_name": "beacon.security.export.truncated",
-            "original_event": event.get("event_name"),
-            "evidence_id": event.get("evidence_id"),
-            "sbom_id": event.get("sbom_id"),
-            "truncated": True,
-        }
-        encoded = _encode_json(summary)
-        if len(encoded) <= self._max_bytes:
-            return encoded, True
-
-        minimal = {
-            "schema_version": 1,
-            "source": event["source"],
-            "event_name": "beacon.security.export.truncated",
-            "truncated": True,
-        }
-        encoded = _encode_json(minimal)
-        if len(encoded) > self._max_bytes:
-            self._count("record_too_small_for_envelope")
-            raise ValueError("record_limit")
-        return encoded, True
+        self._count("record_too_small_for_envelope")
+        raise ValueError("record_limit")
 
     def _open_writer(self) -> None:
         if self._file is None:
@@ -657,35 +620,12 @@ class Exporter:
                 except BaseException:
                     pass
 
-    def _emit_pending_loss(self) -> None:
-        with self._loss_lock:
-            pending = dict(self._pending_dropped)
-            self._pending_dropped = {"security": 0, "sbom": 0}
-        for channel, count in pending.items():
-            if count <= 0:
-                continue
-            event_name = (
-                "beacon.security.export.dropped"
-                if channel == "security"
-                else "beacon.security.sbom.export.dropped"
-            )
-            self.emit(
-                {
-                    "event_name": event_name,
-                    "observed_at": self._now_stamp(),
-                    "count": count,
-                    "delivery": self.delivery(),
-                },
-                evidence=True,
-            )
-
     def _loss(
         self, reason: str, event: Mapping[str, Any] | None = None
     ) -> None:
         channel = "sbom" if str(reason).startswith("sbom.") else "security"
         with self._loss_lock:
             self._dropped += 1
-            self._pending_dropped[channel] += 1
             self._dropped_by_channel[channel] += 1
         self._count(reason)
         if channel == "security":
@@ -733,7 +673,6 @@ class Exporter:
         self._count(channel + ".shutdown_pending", amount)
         with self._loss_lock:
             self._dropped += amount
-            self._pending_dropped[channel] += amount
             self._dropped_by_channel[channel] += amount
         try:
             if channel == "security":
@@ -773,31 +712,10 @@ class Exporter:
         ) + ".%03dZ" % int((value - int(value)) * 1000)
 
     @staticmethod
-    def _now_stamp() -> str:
-        return time.strftime(
-            "%Y-%m-%dT%H:%M:%S", time.gmtime()
-        ) + ".%03dZ" % int((time.time() % 1) * 1000)
-
-    @staticmethod
-    def _is_diagnostic(event: Mapping[str, Any]) -> bool:
-        name = str(event.get("event_name", ""))
-        return name in {
-            "beacon.security.collection.incomplete",
-            "beacon.security.finding.summary",
-            "beacon.security.snapshot.failed",
-            "beacon.security.export.dropped",
-            "beacon.security.sbom.export.dropped",
-        } or name.startswith("beacon.security.instrumentation.")
-
-    @staticmethod
     def _is_security_event(event: Mapping[str, Any] | None) -> bool:
         if not isinstance(event, Mapping):
             return True
-        return event.get(
-            "event_name"
-        ) != "beacon.security.sbom.snapshot" and not str(
-            event.get("event_name", "")
-        ).startswith("beacon.security.sbom.")
+        return event.get("event_name") == FINDING
 
     @staticmethod
     def _make_logger() -> Any:

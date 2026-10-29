@@ -202,20 +202,19 @@ def test_repeated_findings_preserve_samples_counts_and_new_run_details(
     assert len(emitted) == 1
     occurrence = emitted[0]
     assert occurrence["finding_id"] == first["finding_id"]
-    assert occurrence["evidence_id"] == repeated["evidence_id"]
-    assert occurrence["occurrence_id"] != first["evidence_id"]
+    assert occurrence["occurrence_id"] == repeated["occurrence_id"]
+    assert occurrence["occurrence_id"] != first["occurrence_id"]
     assert occurrence["trace_id"] == "b" * 32
-    assert occurrence["occurrences_total"] == 2
-    assert occurrence["aggregation_status"] == "tracked"
+    assert "occurrences_total" not in occurrence
     assert occurrence["evidence_sampled"] is False
     assert occurrence["evidence_sample_reason"] == "interval"
-    assert occurrence["truncation_reason"] == "evidence_sampled_out"
+    assert not occurrence.get("truncated", False)
     for field in ("sources", "propagation", "ranges", "stack"):
         assert occurrence[field] == []
     ledger.tick({}, lambda _: None, force=True)
     finding = _read_json(tmp_path / "findings.json")["findings"][0]
     assert finding["occurrences"] == 2 and finding["last_trace_id"] == "b" * 32
-    assert finding["representative"]["evidence_id"] == first["evidence_id"]
+    assert finding["representative"]["occurrence_id"] == first["occurrence_id"]
     assert finding["representative"]["propagation"] == first["propagation"]
 
     expires = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
@@ -356,7 +355,7 @@ def _configure_exporter_env(monkeypatch, tmp_path, **values):
 def _identity():
     return {
         "application_id": "qa-product-app",
-        "instance_id": "qa-product-instance",
+        "instance_id": "233cf30d-c73b-4365-b052-0e7159ee6268",
         "service": {"service.name": "qa-product"},
         "code": {
             "repository": "beacon_security/qa",
@@ -375,7 +374,89 @@ def _read_jsonl(path: Path):
     ]
 
 
-def test_exporter_separates_sbom_log_sources_through_normal_and_truncated_delivery(
+def _finding_event(occurrence_id: str, **values):
+    return {
+        "event_name": "beacon.security.finding",
+        "occurrence_id": occurrence_id,
+        "finding_id": "finding-" + "a" * 64,
+        "fingerprint_version": 1,
+        "rule": "sql_injection",
+        "sink": {
+            "function": "db.execute",
+            "role": "sql_template",
+            "location": "qa#sink",
+        },
+        "attack_evidence": {"status": "no_evidence", "reason": "qa"},
+        "evidence_sampled": True,
+        "collection_complete": True,
+        **values,
+    }
+
+
+def _inventory_event(index: int):
+    return {
+        "event_name": "beacon.security.sbom.inventory",
+        "started_at": "2026-10-29T00:00:00.000Z",
+        "uptime_ms": index,
+        "dependencies": [{"name": "package", "version": "1.0"}],
+    }
+
+
+def test_finding_exception_survives_instance_restart(monkeypatch, tmp_path):
+    from beacon_security.ledger import RuntimeLedger
+
+    _configure_exporter_env(monkeypatch, tmp_path)
+    finding_id = "finding-" + "a" * 64
+    expiry = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+    (tmp_path / "control.json").write_text(
+        json.dumps(
+            {
+                "revision": "stable-exception",
+                "exceptions": [
+                    {
+                        "scope": {"finding_id": finding_id},
+                        "decision": "accepted_risk",
+                        "reason": "reviewed",
+                        "expires_at": expiry,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    for instance_id in (
+        "233cf30d-c73b-4365-b052-0e7159ee6268",
+        "aaaaf30d-c73b-4365-b052-0e7159ee6268",
+    ):
+        identity = {**_identity(), "instance_id": instance_id}
+        ledger = RuntimeLedger(identity, "exceptions", tmp_path)
+        ledger.tick({}, lambda _event: None, force=True)
+        assert ledger._triage(finding_id)["decision"] == "accepted_risk"
+
+
+def test_evidence_file_is_independent_of_local_snapshots(
+    monkeypatch, tmp_path
+):
+    from beacon_security.exporter import Exporter
+
+    _configure_exporter_env(
+        monkeypatch, tmp_path, BEACON_SECURITY_LOCAL_OUTPUT_ENABLED="false"
+    )
+    exporter = Exporter(_identity(), "evidence-file", tmp_path)
+    try:
+        assert exporter._monitor is None
+        exporter.emit(_finding_event("file-only"), evidence=True)
+        assert exporter.flush(timeout=5)
+    finally:
+        exporter.close()
+    assert (
+        _read_jsonl(tmp_path / "evidence.jsonl")[0]["occurrence_id"]
+        == "file-only"
+    )
+    assert not (tmp_path / "findings.json").exists()
+
+
+def test_exporter_emits_only_v2_sources_and_drops_oversized_records(
     monkeypatch, tmp_path
 ):
     from beacon_security.exporter import Exporter
@@ -395,49 +476,52 @@ def test_exporter_separates_sbom_log_sources_through_normal_and_truncated_delive
         "io.beacon.security", __version__
     )
     try:
-        for max_bytes in (65536, 256, 128):
-            exporter._max_bytes = max_bytes
-            for event_name, source in (
+        exporter.emit(_finding_event("normal"))
+        exporter.emit(_inventory_event(1))
+        for retired in (
+            "beacon.security.sbom.health",
+            "beacon.security.sbom.update_failed",
+            "beacon.security.export.dropped",
+            "beacon.security.finding.summary",
+        ):
+            exporter.emit({"event_name": retired})
+        assert exporter.flush(timeout=5.0)
+        records = logs.get_finished_logs()
+        bodies = [json.loads(item.log_record.body) for item in records]
+        assert sorted(
+            (item["event_name"], item["source"]) for item in bodies
+        ) == sorted(
+            [
                 ("beacon.security.finding", "beacon_security"),
-                ("beacon.security.sbom.snapshot", "beacon_security_sbom"),
-                ("beacon.security.sbom.health", "beacon_security_sbom"),
-                ("beacon.security.sbom.update_failed", "beacon_security_sbom"),
-                (
-                    "beacon.security.sbom.export.dropped",
-                    "beacon_security_sbom",
-                ),
-            ):
-                logs.clear()
-                exporter.emit(
-                    {
-                        "event_name": event_name,
-                        "source": "caller-override",
-                        "sbom_id": "source-test",
-                        "payload": "x" * 4096,
-                    }
-                )
-                assert exporter.flush(timeout=5.0)
-                records = logs.get_finished_logs()
-                assert len(records) == 1
-                log = records[0].log_record
-                body = json.loads(log.body)
-                assert log.attributes["source"] == body["source"] == source
-                assert (
-                    log.event_name
-                    == log.attributes["event.name"]
-                    == body["event_name"]
-                )
-                assert len(log.body.encode("utf-8")) <= max_bytes
-                if max_bytes == 65536:
-                    assert body["event_name"] == event_name
-                else:
-                    assert (
-                        body["event_name"]
-                        == "beacon.security.export.truncated"
-                    )
-                    assert body.get("original_event") == (
-                        event_name if max_bytes == 256 else None
-                    )
+                ("beacon.security.sbom.inventory", "beacon_security_sbom"),
+            ]
+        )
+        assert all(item["schema_version"] == 2 for item in bodies)
+        assert all(
+            record.log_record.attributes["source"] == body["source"]
+            for record, body in zip(records, bodies)
+        )
+        assert all(
+            record.log_record.severity_text == "INFO" for record in records
+        )
+        logs.clear()
+        exporter._max_bytes = 1024
+        exporter.emit(
+            _finding_event("reduced", sources=[{"detail": "x" * 4096}])
+        )
+        assert exporter.flush(timeout=5.0)
+        reduced = json.loads(logs.get_finished_logs()[0].log_record.body)
+        assert reduced["event_name"] == "beacon.security.finding"
+        assert reduced["truncated"] is True
+        assert reduced["evidence_sampled"] is False
+        assert "sources" not in reduced
+        logs.clear()
+        exporter._max_bytes = 128
+        exporter.emit(
+            _finding_event("dropped", sources=[{"detail": "x" * 4096}])
+        )
+        assert exporter.flush(timeout=5.0)
+        assert logs.get_finished_logs() == ()
     finally:
         exporter.close()
         provider.shutdown()
@@ -480,13 +564,11 @@ def test_exporter_reuses_existing_otel_provider_and_bridges_enqueued_trace_conte
         with tracer.start_as_current_span("product-contract") as span:
             span_context = span.get_span_context()
             exporter.emit(
-                {
-                    "schema_version": 1,
-                    "event_name": "beacon.security.finding",
-                    "evidence_id": "ev-product-context",
-                    "trace_id": format(span_context.trace_id, "032x"),
-                    "server_span_id": format(span_context.span_id, "016x"),
-                },
+                _finding_event(
+                    "ev-product-context",
+                    trace_id=format(span_context.trace_id, "032x"),
+                    server_span_id=format(span_context.span_id, "016x"),
+                ),
                 span_context=span_context,
                 evidence=True,
             )
@@ -497,14 +579,14 @@ def test_exporter_reuses_existing_otel_provider_and_bridges_enqueued_trace_conte
             record
             for record in records
             if json.loads(str(getattr(record, "log_record", record).body)).get(
-                "evidence_id"
+                "occurrence_id"
             )
             == "ev-product-context"
         ]
         assert len(matching) == 1
         log_record = getattr(matching[0], "log_record", matching[0])
         body = json.loads(str(log_record.body))
-        assert body["schema_version"] == 1
+        assert body["schema_version"] == 2
         assert body["source"] == "beacon_security"
         assert "severity_text" not in body
         assert "severity_number" not in body
@@ -518,7 +600,7 @@ def test_exporter_reuses_existing_otel_provider_and_bridges_enqueued_trace_conte
         assert log_record.trace_id == span_context.trace_id
         assert log_record.span_id == span_context.span_id
         assert (
-            _read_jsonl(tmp_path / "evidence.jsonl")[0]["evidence_id"]
+            _read_jsonl(tmp_path / "evidence.jsonl")[0]["occurrence_id"]
             == "ev-product-context"
         )
     finally:
@@ -545,30 +627,10 @@ def test_security_and_sbom_queues_are_independent_and_fail_open_on_full_queue(
     monkeypatch.setattr(Exporter, "_run_channel", lambda self, *_args: None)
     exporter = Exporter(_identity(), "qa-profile", tmp_path)
     try:
-        exporter.emit(
-            {
-                "event_name": "beacon.security.finding",
-                "evidence_id": "security-1",
-            }
-        )
-        exporter.emit(
-            {
-                "event_name": "beacon.security.finding",
-                "evidence_id": "security-2",
-            }
-        )
-        exporter.emit(
-            {
-                "event_name": "beacon.security.sbom.snapshot",
-                "sbom_id": "sbom-1",
-            }
-        )
-        exporter.emit(
-            {
-                "event_name": "beacon.security.sbom.snapshot",
-                "sbom_id": "sbom-2",
-            }
-        )
+        exporter.emit(_finding_event("security-1"))
+        exporter.emit(_finding_event("security-2"))
+        exporter.emit(_inventory_event(1))
+        exporter.emit(_inventory_event(2))
 
         delivery = exporter.delivery()
         assert delivery["security_queue_depth"] == 1
@@ -604,12 +666,10 @@ def test_jsonl_rotation_and_otel_failure_keep_local_evidence_fail_open(
     try:
         for index in range(6):
             exporter.emit(
-                {
-                    "schema_version": 1,
-                    "event_name": "beacon.security.finding",
-                    "evidence_id": f"ev-rotation-{index}",
-                    "payload": "x" * 180,
-                },
+                _finding_event(
+                    f"ev-rotation-{index}",
+                    sources=[{"id": "s1", "detail": "x" * 180}],
+                ),
                 evidence=True,
             )
         assert exporter.flush(timeout=5.0)
@@ -641,32 +701,20 @@ def test_sbom_budget_waits_without_losing_snapshots_or_blocking_security(
 
     def capture(body, event, context):
         emitted.append(event)
-        if event.get("evidence_id") == "during-sbom-deferral":
+        if event.get("occurrence_id") == "during-sbom-deferral":
             security_delivered.set()
 
     monkeypatch.setattr(exporter, "_emit_otel", capture)
     try:
         for index in range(3):
-            exporter.emit(
-                {
-                    "event_name": "beacon.security.sbom.snapshot",
-                    "sbom_id": "deferred",
-                    "revision": index,
-                    "dependencies": [{"name": "package", "version": "1.0"}],
-                }
-            )
-        exporter.emit(
-            {
-                "event_name": "beacon.security.finding",
-                "evidence_id": "during-sbom-deferral",
-            }
-        )
+            exporter.emit(_inventory_event(index))
+        exporter.emit(_finding_event("during-sbom-deferral"))
         assert security_delivered.wait(1)
         assert exporter.flush(timeout=4)
         assert [
-            event["revision"]
+            event["uptime_ms"]
             for event in emitted
-            if event.get("sbom_id") == "deferred"
+            if event.get("event_name") == "beacon.security.sbom.inventory"
         ] == [0, 1, 2]
         delivery = exporter.delivery()
         assert delivery["sbom_dropped"] == delivery["security_dropped"] == 0
@@ -675,7 +723,7 @@ def test_sbom_budget_waits_without_losing_snapshots_or_blocking_security(
         exporter.close()
 
 
-def test_delivery_loss_marks_a_real_run_incomplete_for_negative_verification(
+def test_delivery_loss_marks_a_real_run_incomplete_even_when_finding_observed(
     monkeypatch, tmp_path
 ):
     """A run carrying delivery loss cannot support a negative verification."""
@@ -735,12 +783,12 @@ def test_delivery_loss_marks_a_real_run_incomplete_for_negative_verification(
         "sqlite3.Connection.execute",
         "query",
         value,
-        marks=(),
+        marks=state.marks(value),
         location="qa#loss",
     )
     state.gap("qa_delivery_loss")
     events = ledger.end(state)
-    assert event is None and events
+    assert event is not None and events
     assert events[0]["request"] == request_metadata
     ledger.record_delivery_loss(events[0])
 
@@ -786,8 +834,10 @@ def test_delivery_loss_marks_a_real_run_incomplete_for_negative_verification(
         text=True,
         check=False,
     )
-    assert completed.returncode == 3
-    assert json.loads(completed.stdout)["outcome"] == "inconclusive"
+    assert completed.returncode == 0
+    report = json.loads(completed.stdout)
+    assert report["outcome"] == "observed"
+    assert "candidate_observation_or_delivery_loss" in report["reasons"]
 
 
 def test_request_fields_are_retained_across_event_finding_and_run(
@@ -1016,6 +1066,7 @@ current.exporter.ledger._runs_revision += 1
                 "BEACON_SECURITY_OUTPUT": str(output),
             },
             timeout=4,
+            check=False,
         )
         assert result.returncode == 0, result.stderr
         assert result.stdout.splitlines() == ["provider-flush"], result.stderr

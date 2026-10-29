@@ -533,7 +533,7 @@ class SecurityState:
                     "schema_version": 1,
                     "source": "beacon_security",
                     "event_name": "beacon.security.finding",
-                    "evidence_id": previous["evidence_id"]
+                    "occurrence_id": previous["occurrence_id"]
                     if previous
                     else "ev-" + str(uuid.uuid4()),
                     "attack_evidence": attack,
@@ -585,26 +585,6 @@ class SecurityState:
             else:
                 self.pending[self.pending.index(previous)] = event
             return event
-
-    def diagnostics(self):
-        if not self.gaps and not self.truncated and self.collection_enabled:
-            return None
-        return {
-            "event_name": "beacon.security.collection.incomplete",
-            "trace_id": self.trace_id,
-            "server_span_id": self.server_span_id,
-            "trace_flags": self.trace_flags,
-            "truncated": self.truncated,
-            "coverage_gaps": sorted(self.gaps),
-            "collection_status": self.collection_status,
-            "counts": {
-                "objects": len(self.objects),
-                "retained_bytes": self.retained_bytes,
-                "nodes": len(self.nodes),
-                "sources": self.source_count,
-                "findings": len(self.pending),
-            },
-        }
 
     def close(self):
         with self.lock:

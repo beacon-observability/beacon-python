@@ -1,0 +1,311 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Beacon Security event schema v2",
+  "$defs": {
+    "dependency": {
+      "type": "object",
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "hash": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "inventory": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "source",
+        "event_name",
+        "instance_id",
+        "observed_at",
+        "dependencies",
+        "started_at",
+        "uptime_ms"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 2
+        },
+        "source": {
+          "const": "beacon_security_sbom"
+        },
+        "event_name": {
+          "const": "beacon.security.sbom.inventory"
+        },
+        "instance_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "observed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dependency"
+          }
+        },
+        "part_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "part_count": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "started_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "uptime_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "dependentRequired": {
+        "part_index": [
+          "part_count"
+        ],
+        "part_count": [
+          "part_index"
+        ]
+      }
+    },
+    "finding": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "source",
+        "event_name",
+        "instance_id",
+        "observed_at",
+        "finding_id",
+        "occurrence_id",
+        "fingerprint_version",
+        "rule",
+        "sink",
+        "attack_evidence",
+        "evidence_sampled",
+        "collection_complete"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 2
+        },
+        "source": {
+          "const": "beacon_security"
+        },
+        "event_name": {
+          "const": "beacon.security.finding"
+        },
+        "instance_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "observed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "finding_id": {
+          "type": "string",
+          "pattern": "^finding-[0-9a-f]{64}$"
+        },
+        "occurrence_id": {
+          "type": "string"
+        },
+        "fingerprint_version": {
+          "const": 1
+        },
+        "rule": {
+          "enum": [
+            "sql_injection",
+            "command_injection",
+            "command_execution",
+            "ssrf",
+            "http_request_input",
+            "path_traversal"
+          ]
+        },
+        "sink": {
+          "type": "object",
+          "minProperties": 1,
+          "properties": {
+            "function": {
+              "type": "string"
+            },
+            "role": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string"
+            },
+            "operation": {
+              "type": "string"
+            },
+            "path_role": {
+              "type": "string"
+            },
+            "input_part": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "request": {
+          "type": "object",
+          "minProperties": 1,
+          "properties": {
+            "method": {
+              "type": "string"
+            },
+            "route": {
+              "type": "string"
+            },
+            "error_type": {
+              "type": "string"
+            },
+            "status_code": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": false
+        },
+        "evidence_sampled": {
+          "type": "boolean"
+        },
+        "collection_complete": {
+          "type": "boolean"
+        },
+        "component": {
+          "$ref": "#/$defs/dependency"
+        },
+        "attack_evidence": {
+          "type": "object",
+          "required": [
+            "status",
+            "reason"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "unknown",
+                "no_evidence",
+                "suspected"
+              ]
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "trace_id": {
+          "type": "string"
+        },
+        "server_span_id": {
+          "type": "string"
+        },
+        "current_span_id": {
+          "type": "string"
+        },
+        "precision": {
+          "type": "string"
+        },
+        "evidence_sample_reason": {
+          "type": "string"
+        },
+        "truncation_reason": {
+          "type": "string"
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1
+        },
+        "propagation": {
+          "type": "array",
+          "minItems": 1
+        },
+        "ranges": {
+          "type": "array",
+          "minItems": 1
+        },
+        "stack": {
+          "type": "array",
+          "minItems": 1
+        },
+        "coverage_gaps": {
+          "type": "array",
+          "minItems": 1
+        },
+        "truncated": {
+          "const": true
+        },
+        "run": {
+          "type": "object",
+          "minProperties": 1
+        },
+        "triage": {
+          "type": "object",
+          "minProperties": 1
+        }
+      },
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "application_id"
+            ]
+          },
+          {
+            "required": [
+              "evidence_id"
+            ]
+          },
+          {
+            "required": [
+              "occurrences_total"
+            ]
+          },
+          {
+            "required": [
+              "sbom_id"
+            ]
+          },
+          {
+            "required": [
+              "revision"
+            ]
+          },
+          {
+            "required": [
+              "release_id"
+            ]
+          }
+        ]
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/inventory"
+    },
+    {
+      "$ref": "#/$defs/finding"
+    }
+  ],
+  "$id": "https://github.com/beacon-observability/beacon-security-spec/raw/main/schemas/beacon-security-event-v2.schema.json"
+}

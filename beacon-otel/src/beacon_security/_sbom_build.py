@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from . import config
 from ._sbom_metadata import (
@@ -35,13 +36,11 @@ class _BuildSupport:
             if isinstance(self.identity.get("service"), dict)
             else {}
         )
-        name = (
-            _bounded(service.get("service.name"), 512) or self.application_id
-        )
+        name = _bounded(service.get("service.name"), 512) or self.instance_id
         version = _bounded(service.get("service.version"), 256)
         record: dict[str, Any] = {
             "type": "application",
-            "bom-ref": self.application_id,
+            "bom-ref": self.instance_id,
             "name": name,
         }
         if version:
@@ -100,21 +99,6 @@ class _BuildSupport:
                 _pypi_purl(distribution.name, distribution.version),
             )
         return tools
-
-    def _release_id(
-        self, records: dict[str, dict[str, Any]]
-    ) -> tuple[str, str]:
-        digests = sorted(
-            str(entry["hashes"][0]["content"])
-            for entry in records.values()
-            if isinstance(entry.get("hashes"), list)
-            and entry["hashes"]
-            and entry["hashes"][0].get("content")
-        )
-        status = "artifact_digest" if digests else "incomplete"
-        return "release-" + _sha256(
-            self.application_id + "|" + "|".join(digests)
-        ), status
 
     @staticmethod
     def _quality(records: dict[str, dict[str, Any]]) -> dict[str, int]:
@@ -407,28 +391,16 @@ class _BuildSupport:
 
     def _document(
         self,
-        revision: int,
         application: dict[str, Any],
         tools: list[dict[str, Any]],
         records: dict[str, dict[str, Any]],
         dependencies: list[dict[str, Any]],
         reasons: set[str],
-        release_id: str,
-        release_status: str,
         quality: dict[str, int],
         stable_digest: str,
     ) -> dict[str, Any]:
         properties = [
             {"name": "source", "value": "beacon_security"},
-            {
-                "name": "beacon:security:application-id",
-                "value": self.application_id,
-            },
-            {"name": "beacon:security:release-id", "value": release_id},
-            {
-                "name": "beacon:security:release:identity-status",
-                "value": release_status,
-            },
             {
                 "name": "beacon:security:sbom:quality",
                 "value": json.dumps(
@@ -461,15 +433,15 @@ class _BuildSupport:
         return {
             "bomFormat": "CycloneDX",
             "specVersion": "1.7",
-            "serialNumber": self.sbom_id,
-            "version": revision,
+            "serialNumber": "urn:uuid:" + self.instance_id,
+            "version": 1,
             "metadata": metadata,
             "components": list(records.values()),
             "dependencies": dependencies,
             "compositions": [
                 {
                     "aggregate": "incomplete",
-                    "assemblies": [self.application_id],
+                    "assemblies": [self.instance_id],
                 }
             ],
             "properties": properties,

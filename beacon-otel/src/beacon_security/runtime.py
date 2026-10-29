@@ -61,22 +61,11 @@ class Runtime:
             self.exporter.ledger.sbom({"status": "disabled"})
         for reason in sorted(_startup_gaps):
             self.exporter.ledger.count("instrumentation_failures")
-            self.exporter.emit(
-                {
-                    "event_name": "beacon.security.collection.incomplete",
-                    "reason": reason,
-                    "identity": self.identity,
-                }
-            )
         atexit.register(self.close)
 
     def _sbom_event(self, event):
         self.exporter.emit(event)
-        if event.get("event_name") in (
-            "beacon.security.sbom.health",
-            "beacon.security.sbom.snapshot",
-            "beacon.security.sbom.update_failed",
-        ):
+        if event.get("event_name") == "beacon.security.sbom.inventory":
             self.exporter.ledger.sbom(event)
 
     def close(self, timeout=1.5):
@@ -219,8 +208,8 @@ def _summarize(state):
             ),
         )
         span.set_attribute(
-            "beacon.security.evidence.ids",
-            [event["evidence_id"] for event in state.pending],
+            "beacon.security.occurrence.ids",
+            [event["occurrence_id"] for event in state.pending],
         )
         state.summary_written = True
     if state.truncated:
@@ -277,10 +266,7 @@ def sink(
                         location.partition("#")[0]
                     )
                 else:
-                    event["component"] = {
-                        "status": "unresolved",
-                        "reason": "sbom_disabled",
-                    }
+                    event["component"] = {}
                 try:
                     _summarize(state)
                 except Exception:
@@ -308,13 +294,6 @@ def startup_gap(reason):
             and current.pid == os.getpid()
         ):
             current.exporter.ledger.count("instrumentation_failures")
-            current.exporter.emit(
-                {
-                    "event_name": "beacon.security.collection.incomplete",
-                    "reason": reason,
-                    "identity": current.identity,
-                }
-            )
 
 
 def start(adapters):

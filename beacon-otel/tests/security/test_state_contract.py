@@ -88,9 +88,7 @@ def test_ambiguity_invalidates_derived_marks_and_pending_evidence(monkeypatch):
     assert state.marks(query) == ()
     assert state.marks(derived) == ()
     assert state.pending == []
-    diagnostic = state.diagnostics()
-    assert diagnostic is not None
-    assert "source_identity_ambiguous" in diagnostic["coverage_gaps"]
+    assert "source_identity_ambiguous" in state.gaps
 
 
 def test_shared_scalars_and_units_are_explicit(monkeypatch):

@@ -63,7 +63,8 @@ def _bounded(value: Any, limit: int = _MAX_TEXT) -> str:
 
 def _setting_int(key: str, default: int) -> int:
     try:
-        return max(1, int(config.text(key, str(default))))
+        value = int(config.text(key, str(default)))
+        return value if value > 0 else default
     except (TypeError, ValueError, OverflowError):
         return default
 
@@ -329,7 +330,7 @@ def _included_module(name: str) -> bool:
         return bool(config.included(name))
     except Exception:
         try:
-            prefixes = getattr(config, "prefixes")
+            prefixes = config.prefixes
             return any(
                 name == prefix or name.startswith(prefix + ".")
                 for prefix in prefixes("beacon.security.python.include")
@@ -551,7 +552,7 @@ class _MetadataSupport:
             pass
         if not text:
             try:
-                info_path = Path(getattr(distribution, "_path"))
+                info_path = Path(distribution._path)
                 candidate = info_path / "direct_url.json"
                 if candidate.is_file() and candidate.stat().st_size <= 65536:
                     text = candidate.read_text(encoding="utf-8")
@@ -728,8 +729,10 @@ class _MetadataSupport:
         result: list[_ModuleObservation] = []
         try:
             items = list(sys.modules.items())
-        except Exception:
-            items = []
+        except Exception as error:
+            raise RuntimeError(
+                "loaded_module_observation_unavailable"
+            ) from error
         for name, module in sorted(items, key=lambda item: str(item[0])):
             name = _bounded(name, 512)
             if not name or module is None:
@@ -749,8 +752,10 @@ class _MetadataSupport:
                     result.append(
                         _ModuleObservation(name, origin, namespace, builtin)
                     )
-            except Exception:
-                continue
+            except Exception as error:
+                raise RuntimeError(
+                    "loaded_module_observation_unavailable"
+                ) from error
         return result
 
     def _resolve_observation(

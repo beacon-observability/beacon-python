@@ -9,8 +9,9 @@ import tempfile
 import threading
 import time
 from collections import OrderedDict, deque
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any
 
 from . import attack_evidence, config
 from .schema import event_record, request_fields
@@ -160,6 +161,9 @@ class RuntimeLedger:
         )
 
         self._lock = threading.RLock()
+        self._local_output_enabled = config.flag(
+            "beacon.security.local-output.enabled", False
+        )
         self._snapshot_lock = threading.Lock()
         self._shutdown_uncertainty = deque(maxlen=1)
         self._findings: OrderedDict[str, dict[str, Any]] = OrderedDict()
@@ -196,7 +200,6 @@ class RuntimeLedger:
         self._applied_revision = ""
         self._snapshot_at = 0.0
         self._last_snapshot_failure_log = 0.0
-        self._summary_at = 0.0
         self._started_at = _now()
         self._active = 0
         self._completed = 0
@@ -278,8 +281,6 @@ class RuntimeLedger:
                     }
                 )
             )
-            if event.get("event_name") == "beacon.security.sbom.update_failed":
-                next_value["status"] = "degraded"
             self._sbom = next_value
 
     def begin(self, state: Any) -> None:
@@ -448,44 +449,51 @@ class RuntimeLedger:
                         event["aggregation_status"] = "capacity_exceeded"
                         event["evidence_sample_reason"] = "finding_capacity"
                         self._omit_evidence(event)
-                        event.pop("occurrences_total", None)
                         result.append(event)
                         continue
                     finding = {
                         "finding_id": finding_key,
-                        "rule": event.get("rule"),
-                        "assessment": event.get("assessment"),
-                        "validation": "unvalidated",
-                        "sink": event.get("sink"),
-                        "first_seen": event.get("observed_at"),
-                        "attack_evidence_counts": {
-                            "unknown": 0,
-                            "no_evidence": 0,
-                            "suspected": 0,
-                        },
-                        "occurrences": 0,
                         "last_sample_millis": 0,
                     }
+                    if self._local_output_enabled:
+                        finding.update(
+                            {
+                                "rule": event.get("rule"),
+                                "assessment": event.get("assessment"),
+                                "validation": "unvalidated",
+                                "sink": event.get("sink"),
+                                "first_seen": event.get("observed_at"),
+                                "attack_evidence_counts": {
+                                    "unknown": 0,
+                                    "no_evidence": 0,
+                                    "suspected": 0,
+                                },
+                                "occurrences": 0,
+                            }
+                        )
                     self._findings[finding_key] = finding
 
-                self._increment_record(finding, "occurrences", 1)
-                self._increment_record(
-                    finding["attack_evidence_counts"],
-                    attack_evidence.status(event),
-                    1,
-                )
-                finding["last_seen"] = event.get("observed_at")
-                finding["last_trace_id"] = event.get("trace_id")
-                finding["last_evidence_id"] = event.get("evidence_id")
-                finding["last_run"] = _copy(run_state)
-                finding["code"] = _copy(event.get("code"))
-                finding["request"] = _copy(event.get("request", request))
-                finding["component"] = _copy(event.get("component"))
-                finding["triage"] = self._triage(finding_key)
-                event["triage"] = _copy(finding["triage"])
-
-                event["occurrences_total"] = finding["occurrences"]
-                event["aggregation_status"] = "tracked"
+                if self._local_output_enabled:
+                    self._increment_record(finding, "occurrences", 1)
+                    self._increment_record(
+                        finding["attack_evidence_counts"],
+                        attack_evidence.status(event),
+                        1,
+                    )
+                    finding["last_seen"] = event.get("observed_at")
+                    finding["last_trace_id"] = event.get("trace_id")
+                    finding["last_occurrence_id"] = event.get("occurrence_id")
+                    finding["last_run"] = _copy(run_state)
+                    finding["code"] = _copy(event.get("code"))
+                    finding["request"] = _copy(event.get("request", request))
+                    finding["component"] = _copy(event.get("component"))
+                triage = self._triage(finding_key)
+                if (
+                    self._local_output_enabled
+                    or triage.get("decision") != "unreviewed"
+                ):
+                    finding["triage"] = triage
+                    event["triage"] = _copy(triage)
                 event["evidence_sampled"] = sample
                 event["evidence_sample_reason"] = (
                     "evidence_upgrade"
@@ -496,19 +504,15 @@ class RuntimeLedger:
                 )
                 if upgrade:
                     finding["strongest_evidence_rank"] = rank
-                    finding["strongest_attack_evidence"] = _copy(
-                        event.get(
-                            "attack_evidence",
-                            attack_evidence.evidence(
-                                "unknown", "analysis_unavailable"
-                            ),
+                    if self._local_output_enabled:
+                        finding["strongest_attack_evidence"] = _copy(
+                            event.get("attack_evidence")
                         )
-                    )
-                    finding["assessment"] = event.get("assessment")
+                        finding["assessment"] = event.get("assessment")
                 if sample:
                     finding["last_sample_millis"] = now_millis
                     finding["sample_run_id"] = run_id
-                    if rank >= strongest:
+                    if self._local_output_enabled and rank >= strongest:
                         representative = _copy(event)
                         estimate = _estimate(representative)
                         previous_bytes = _number(
@@ -546,18 +550,9 @@ class RuntimeLedger:
                     )
                     self._omit_evidence(event)
                 result.append(event)
-                finding["dirty"] = True
-                self._findings_revision += 1
-
-            diagnostics = self._diagnostic_for_state(
-                state,
-                request,
-                run_state,
-                incomplete,
-                gaps,
-            )
-            if diagnostics is not None:
-                result.append(diagnostics)
+                if self._local_output_enabled:
+                    finding["dirty"] = True
+                    self._findings_revision += 1
 
             self._finish_run_request(
                 state,
@@ -618,12 +613,12 @@ class RuntimeLedger:
         local_output_enabled = config.flag(
             "beacon.security.local-output.enabled", False
         )
+        if not local_output_enabled:
+            return
         if local_output_enabled:
             self._read_control()
-        summaries: list[dict] = []
         with self._lock:
             self._apply_shutdown_uncertainty()
-            now_millis = _now_millis()
             for run in self._runs.values():
                 if run.get("status") == "active" and not _valid_until(
                     run.get("expires_at")
@@ -633,34 +628,12 @@ class RuntimeLedger:
                     self._runs_revision += 1
                 self._finish_if_idle(run)
 
-            flush_due = force or (
-                now_millis - int(self._summary_at * 1000)
-                >= config.limit("beacon.security.findings.flush.seconds", 30)
-                * 1000
-            )
             for finding in self._findings.values():
                 triage = self._triage(str(finding.get("finding_id", "")))
                 if triage != finding.get("triage"):
                     finding["triage"] = triage
                     self._findings_revision += 1
-                if flush_due and finding.pop("dirty", False):
-                    summaries.append(
-                        {
-                            "event_name": "beacon.security.finding.summary",
-                            "observed_at": _now(),
-                            "identity": _copy(self.identity),
-                            "finding_id": finding.get("finding_id"),
-                            "attack_evidence_counts": dict(
-                                finding["attack_evidence_counts"]
-                            ),
-                            "occurrences_total": finding.get("occurrences", 0),
-                            "first_seen": finding.get("first_seen"),
-                            "last_seen": finding.get("last_seen"),
-                            "triage": _copy(finding.get("triage")),
-                        }
-                    )
-            if summaries:
-                self._summary_at = time.time()
+                finding.pop("dirty", None)
 
             findings_revision = self._findings_revision
             runs_revision = self._runs_revision
@@ -703,12 +676,6 @@ class RuntimeLedger:
 
             delivery_copy = _copy(dict(delivery or {}))
 
-        for summary in summaries:
-            try:
-                emit(event_record(summary, self.identity))
-            except BaseException:
-                self.count("request_completion_errors", 1)
-
         if not local_output_enabled:
             return
         try:
@@ -727,26 +694,12 @@ class RuntimeLedger:
                     self._written_revisions["runs"] = runs_revision
             self._write_snapshot("health.json", self.health(delivery_copy))
         except BaseException as error:
-            should_emit = False
             with self._lock:
                 self._snapshot_failures += 1
                 now = time.monotonic()
                 if now - self._last_snapshot_failure_log >= 30.0:
                     self._last_snapshot_failure_log = now
-                    should_emit = True
-                    count = self._snapshot_failures
-            if should_emit:
-                try:
-                    emit(
-                        {
-                            "event_name": "beacon.security.snapshot.failed",
-                            "error_type": type(error).__name__,
-                            "count": count,
-                            "observed_at": _now(),
-                        }
-                    )
-                except BaseException:
-                    pass
+            self.count("snapshot_write_failed:" + type(error).__name__)
 
     def health(self, delivery: Mapping[str, Any] | None) -> dict:
         with self._lock:
@@ -907,8 +860,7 @@ class RuntimeLedger:
         for field in ("sources", "propagation", "ranges", "stack"):
             event[field] = []
         event["evidence_sampled"] = False
-        event["truncated"] = True
-        event["truncation_reason"] = "evidence_sampled_out"
+        event.setdefault("evidence_sample_reason", "interval")
 
     def _enrich_event(
         self,
@@ -936,8 +888,6 @@ class RuntimeLedger:
         event["request"] = _copy(request)
         event["run"] = _copy(run)
         event["trace_availability"] = "not_guaranteed_by_trace_id"
-        if event.get("evidence_id") is not None:
-            event["occurrence_id"] = event.get("evidence_id")
         if event.get("trace_id") in (None, ""):
             event["trace_id"] = str(getattr(state, "trace_id", "") or "")
         if event.get("server_span_id") in (None, ""):
@@ -945,49 +895,12 @@ class RuntimeLedger:
                 getattr(state, "server_span_id", "") or ""
             )
         if incomplete:
-            event["truncated"] = True
             event["coverage_gaps"] = list(gaps)
+            event["collection_complete"] = False
+        if bool(getattr(state, "truncated", False)):
+            event["truncated"] = True
         event.setdefault("trace_flags", getattr(state, "trace_flags", 0))
         return event_record(event, self.identity)
-
-    def _diagnostic_for_state(
-        self,
-        state: Any,
-        request: dict,
-        run: dict,
-        incomplete: bool,
-        gaps: list[str],
-    ) -> dict | None:
-        diagnostic: Any = None
-        try:
-            diagnostic = state.diagnostics()
-        except Exception:
-            diagnostic = None
-        if not isinstance(diagnostic, Mapping):
-            diagnostic = None
-        if diagnostic is None and not incomplete:
-            return None
-        if diagnostic is None:
-            diagnostic = {
-                "event_name": "beacon.security.collection.incomplete",
-                "truncated": True,
-                "coverage_gaps": list(gaps),
-            }
-        result = self._enrich_event(
-            diagnostic,
-            state,
-            request,
-            run,
-            incomplete,
-            gaps,
-        )
-        result.setdefault(
-            "event_name", "beacon.security.collection.incomplete"
-        )
-        result["collection_status"] = str(
-            getattr(state, "collection_status", "")
-        )
-        return result
 
     def _finish_run_request(
         self,
@@ -1305,7 +1218,7 @@ class RuntimeLedger:
             scope = item.get("scope")
             if not isinstance(scope, Mapping):
                 raise ValueError("exception_scope_required")
-            for field in ("application_id", "finding_id"):
+            for field in ("finding_id",):
                 if not _non_empty_text(scope.get(field)):
                     raise ValueError("exception_scope_required")
             if not _non_empty_text(item.get("reason")):
@@ -1324,11 +1237,8 @@ class RuntimeLedger:
                 if not isinstance(item, Mapping):
                     continue
                 scope = _mapping(item.get("scope"))
-                if (
-                    self.identity.get("application_id")
-                    == scope.get("application_id")
-                    and finding_id == scope.get("finding_id")
-                    and _valid_until(item.get("expires_at"))
+                if finding_id == scope.get("finding_id") and _valid_until(
+                    item.get("expires_at")
                 ):
                     return _copy(dict(item))
         return {"decision": "unreviewed"}

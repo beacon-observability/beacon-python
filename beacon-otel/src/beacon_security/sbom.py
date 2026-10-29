@@ -9,16 +9,18 @@ hashes an artifact on an application hot path.
 from __future__ import annotations
 
 import copy
+import datetime as dt
 import json
 import os
 import platform
+import sys
 import tempfile
 import threading
 import time
-import uuid
 from collections import defaultdict
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from . import config
 from ._sbom_build import _BuildSupport
@@ -40,7 +42,26 @@ from ._sbom_metadata import (
     _setting_int,
     _sha256,
 )
-from .schema import component_reference, event_record
+from .schema import component_reference
+
+
+def _process_started() -> tuple[str, float]:
+    """Use the process start tick where available, falling back to activation time."""
+
+    now = time.monotonic()
+    try:
+        fields = Path("/proc/self/stat").read_text().rsplit(") ", 1)[1].split()
+        started = int(fields[19]) / os.sysconf("SC_CLK_TCK")
+        if not 0 <= started <= now:
+            raise ValueError("invalid_process_start")
+    except (OSError, ValueError, IndexError):
+        started = now
+    wall = time.time() - (now - started)
+    return (
+        time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(wall))
+        + ".%03dZ" % int((wall - int(wall)) * 1000),
+        started,
+    )
 
 
 class SbomInventory(_MetadataSupport, _BuildSupport):
@@ -69,7 +90,7 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
             "beacon.security.sbom.cache.seconds", 300
         )
         self.refresh_seconds = _setting_int(
-            "beacon.security.sbom.refresh.seconds", 5
+            "beacon.security.sbom.refresh.seconds", 300
         )
         self.max_archive_bytes = _setting_int(
             "beacon.security.sbom.max.archive.bytes", 64 * 1024 * 1024
@@ -89,16 +110,14 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
             "beacon.security.sbom.max.modules", 100000
         )
 
-        self.application_id = self._application_id()
         self.instance_id = _bounded(
             self.identity.get("instance_id")
             or self.identity.get("instanceId")
-            or uuid.uuid4(),
+            or config.identity()["instance_id"],
             1024,
         )
-        self.sbom_id = "urn:uuid:" + str(uuid.uuid4())
+        self.started_at, self.started_monotonic = _process_started()
         self.output = self._output_path(output)
-        self.history_path = self.output.with_name("sbom-history.json")
         self.local_output_enabled = config.flag(
             "beacon.security.local-output.enabled", False
         )
@@ -125,16 +144,14 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
         self._thread: threading.Thread | None = None
         self._last_failure_at = ""
         self._last_refresh_at = ""
+        self._last_inventory_observed_at = ""
         self._last_error_type = ""
         self._last_success_monotonic = 0.0
         self._last_failure_monotonic = 0.0
-        self._history: dict[str, dict[str, Any]] = {}
+        self._last_warning_monotonic = -30.0
         self._published: dict[str, Any] = {
-            "revision": 0,
-            "release_id": "unresolved",
-            "record_digests": {},
             "module_map": {},
-            "stable_digest": "",
+            "components": {},
             "reasons": {"runtime_dependency_graph_incomplete"},
             "quality": {
                 "components": 0,
@@ -145,26 +162,6 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
                 "loaded_components": 0,
             },
         }
-
-    def _application_id(self) -> str:
-        value = _bounded(
-            self.identity.get("application_id")
-            or self.identity.get("applicationId"),
-            1024,
-        ).strip()
-        if value:
-            return value
-        service = (
-            self.identity.get("service")
-            if isinstance(self.identity.get("service"), dict)
-            else {}
-        )
-        namespace = _bounded(service.get("service.namespace"), 512)
-        name = (
-            _bounded(service.get("service.name"), 512)
-            or "unknown_service:python"
-        )
-        return "app-" + _sha256(namespace + "|" + name)
 
     def _output_path(self, output: Path) -> Path:
         configured = config.text("beacon.security.sbom.output", "").strip()
@@ -193,14 +190,7 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
                 self._last_failure_at = _iso_now()
                 self._last_error_type = type(error).__name__
                 self._last_failure_monotonic = time.monotonic()
-                self._emit(
-                    {
-                        "event_name": "beacon.security.sbom.update_failed",
-                        "sbom_id": self.sbom_id,
-                        "revision": self._published["revision"],
-                        "error_type": _bounded(type(error).__name__, 256),
-                    }
-                )
+                self._warn_failure(error)
 
     def close(self, timeout: float = 3.0) -> None:
         self._stop.set()
@@ -234,19 +224,36 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
                 self._last_failure_at = _iso_now()
                 self._last_error_type = type(error).__name__
                 self._last_failure_monotonic = time.monotonic()
-                revision = self._published["revision"]
-            self._emit(
-                {
-                    "event_name": "beacon.security.sbom.update_failed",
-                    "sbom_id": self.sbom_id,
-                    "revision": revision,
-                    "error_type": _bounded(type(error).__name__, 256),
-                }
+            # The previous successful inventory remains authoritative.
+            self._warn_failure(error)
+
+    def _warn_failure(self, error: Exception) -> None:
+        now = time.monotonic()
+        if now - self._last_warning_monotonic < 30:
+            return
+        self._last_warning_monotonic = now
+        try:
+            print(
+                "[Beacon Security] SBOM update failed: "
+                + type(error).__name__,
+                file=sys.stderr,
             )
-            self._emit(self.health())
+        except BaseException:
+            pass
 
     def _refresh_once(self) -> None:
         now = time.monotonic()
+        observed_at = _iso_now()
+        if observed_at <= self._last_inventory_observed_at:
+            previous = dt.datetime.fromisoformat(
+                self._last_inventory_observed_at.replace("Z", "+00:00")
+            )
+            observed_at = (
+                (previous + dt.timedelta(milliseconds=1))
+                .isoformat(timespec="milliseconds")
+                .replace("+00:00", "Z")
+            )
+        uptime_ms = max(0, int((now - self.started_monotonic) * 1000))
         metadata_cache = self._load_metadata(now)
         observations = self._loaded_modules()
         reasons: set[str] = {"runtime_dependency_graph_incomplete"}
@@ -314,7 +321,11 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
             # artifact hash describes this refresh's observed bytes.  Do not
             # retain a prior digest when the archive is gone or unreadable.
             distribution.artifact_hash = ""
-            paths = archive_paths.get(id(distribution), set())
+            paths = (
+                archive_paths.get(id(distribution), set())
+                if self.local_output_enabled
+                else set()
+            )
             hashes: set[str] = set()
             for archive in sorted(paths, key=str):
                 digest = self._archive_digest(
@@ -327,7 +338,7 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
             elif len(hashes) > 1:
                 reasons.add("ambiguous_artifact_origin")
                 distribution.artifact_hash = ""
-            elif distribution.root is not None:
+            elif self.local_output_enabled and distribution.root is not None:
                 archive = _archive_path(distribution.root)
                 if archive is not None:
                     distribution.artifact_hash = self._archive_digest(
@@ -388,7 +399,7 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
             reasons.add("artifact_replaced_loaded_mapping_invalidated")
 
         module_map: dict[str, dict[str, Any]] = {}
-        app_ref = self.application_id
+        app_ref = self.instance_id
         for observation in observations:
             if len(module_map) >= self.max_modules:
                 reasons.add("loaded_module_observation_limit")
@@ -424,213 +435,98 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
                     if occurrences:
                         record["evidence"] = {"occurrences": occurrences}
 
-        build = self._load_build(now, reasons)
+        build = (
+            self._load_build(now, reasons)
+            if self.local_output_enabled
+            else None
+        )
         if self._build_failure_reason:
             reasons.add(self._build_failure_reason)
-        dependencies = self._merge_build(records, build, app_ref, reasons)
-        application = self._application_record()
-        tools = self._tools(distributions)
-        release_id, release_status = self._release_id(records)
-        quality = self._quality(records)
-        stable_value = {
-            "application": application,
-            "tools": tools,
-            "components": records,
-            "dependencies": dependencies,
-            "reasons": sorted(reasons),
-            "release_id": release_id,
-            "module_map": {
-                name: {
-                    "status": item.get("status"),
-                    "bom-ref": item.get("bom-ref", ""),
-                    "reason": item.get("reason", ""),
-                    "source": item.get("source", ""),
-                }
-                for name, item in sorted(module_map.items())
-            },
-        }
-        stable_digest = _sha256(_canonical_json(stable_value))
-
-        with self._lock:
-            old = self._published
-            if stable_digest == old["stable_digest"]:
-                self._origin_fingerprints = current_fingerprints
-                self._published = {
-                    **old,
-                    "reasons": reasons,
-                    "quality": quality,
-                }
-                self._last_refresh_at = _iso_now()
-                self._last_success_monotonic = time.monotonic()
-                unchanged_health = self.health()
-            else:
-                unchanged_health = None
-                revision = int(old["revision"]) + 1
-                history = copy.deepcopy(self._history)
-
-        if unchanged_health is not None:
-            self._emit(unchanged_health)
-            return
-
-        document = self._document(
-            revision,
-            application,
-            tools,
-            records,
-            dependencies,
-            reasons,
-            release_id,
-            release_status,
-            quality,
-            stable_digest,
+        if self.local_output_enabled:
+            dependencies = self._merge_build(records, build, app_ref, reasons)
+            application = self._application_record()
+            tools = self._tools(distributions)
+            quality = self._quality(records)
+        else:
+            dependencies, application, tools = [], {}, []
+            quality = {}
+        stable_digest = (
+            _sha256(
+                _canonical_json(
+                    {
+                        "application": application,
+                        "tools": tools,
+                        "components": records,
+                        "dependencies": dependencies,
+                        "reasons": sorted(reasons),
+                        "module_map": module_map,
+                    }
+                )
+            )
+            if self.local_output_enabled
+            else ""
         )
+
+        if any(
+            reason.endswith("_limit")
+            or reason.startswith("artifact_scan_")
+            or reason
+            in {"distribution_metadata_unavailable", "artifact_unreadable"}
+            for reason in reasons
+        ):
+            raise ValueError("incomplete_dependency_inventory")
+
         from ._sbom_events import dependency_snapshot
 
         snapshot_events = dependency_snapshot(
             {
-                "event_name": "beacon.security.sbom.snapshot",
-                "sbom_id": self.sbom_id,
-                "revision": revision,
-                "application_id": self.application_id,
-                "release_id": release_id,
+                "event_name": "beacon.security.sbom.inventory",
                 "instance_id": self.instance_id,
-                "status": "current",
-                "completeness": "incomplete",
-                "reasons": sorted(reasons),
+                "observed_at": observed_at,
+                "started_at": self.started_at,
+                "uptime_ms": uptime_ms,
             },
             records.values(),
             self.identity,
         )
-        record_digests = {
-            ref: _sha256(_canonical_json(record))
-            for ref, record in records.items()
-        }
-        next_history = self._next_history(history, record_digests)
-        if self.local_output_enabled:
-            self._write_pair(document, revision, release_id, next_history)
+        from ._sbom_events import component_identity
 
+        components = {
+            ref: component_identity(record["name"], record.get("version", ""))
+            for ref, record in records.items()
+            if record.get("type") == "library"
+        }
+        if self.local_output_enabled:
+            document = self._document(
+                application,
+                tools,
+                records,
+                dependencies,
+                reasons,
+                quality,
+                stable_digest,
+            )
+            self.output.parent.mkdir(parents=True, exist_ok=True)
+            temporary = self._write_temp(
+                document, self.output.parent, ".sbom-"
+            )
+            try:
+                os.replace(temporary, self.output)
+            finally:
+                temporary.unlink(missing_ok=True)
         with self._lock:
             self._origin_fingerprints = current_fingerprints
-            self._history = next_history
             self._last_refresh_at = _iso_now()
             self._last_success_monotonic = time.monotonic()
             self._published = {
-                "revision": revision,
-                "release_id": release_id,
-                "record_digests": record_digests,
-                "module_map": copy.deepcopy(module_map),
-                "stable_digest": stable_digest,
+                "module_map": module_map,
+                "components": components,
                 "reasons": reasons,
                 "quality": quality,
             }
         for event in snapshot_events:
             self._emit(event)
-        self._emit(self.health())
-
-    def _next_history(
-        self,
-        history: dict[str, dict[str, Any]],
-        record_digests: dict[str, str],
-    ) -> dict[str, dict[str, Any]]:
-        now = _iso_now()
-        previous = self._published["record_digests"]
-        for ref, digest in sorted(record_digests.items()):
-            if previous.get(ref) == digest:
-                continue
-            historical = history.get(ref)
-            if (
-                historical is None
-                and len(history) < self.max_record_components
-            ):
-                historical = {"bom-ref": ref, "first_seen": now}
-                history[ref] = historical
-            if historical is not None:
-                historical["state"] = "current"
-                historical["last_changed_at"] = now
-        for ref in sorted(previous):
-            if ref in record_digests:
-                continue
-            historical = history.get(ref)
-            if historical is not None:
-                historical["state"] = "removed"
-                historical["last_changed_at"] = now
-        return history
-
-    def _write_pair(
-        self,
-        document: dict[str, Any],
-        revision: int,
-        release_id: str,
-        history: dict[str, dict[str, Any]],
-    ) -> None:
-        parent = self.output.parent
-        parent.mkdir(parents=True, exist_ok=True)
-        history_document = {
-            "schema_version": 1,
-            "source": "beacon_security",
-            "sbom_id": self.sbom_id,
-            "revision": revision,
-            "application_id": self.application_id,
-            "release_id": release_id,
-            "updated_at": _iso_now(),
-            "entries": list(history.values()),
-            "history_limit": self.max_record_components,
-            "history_complete": len(history) < self.max_record_components,
-        }
-        app_tmp: Path | None = None
-        history_tmp: Path | None = None
-        app_backup: Path | None = None
-        history_backup: Path | None = None
-        app_installed = False
-        history_installed = False
-        try:
-            app_tmp = self._write_temp(document, parent, ".sbom-")
-            history_tmp = self._write_temp(
-                history_document, parent, ".sbom-history-"
-            )
-            app_backup = self._move_to_backup(
-                self.output, parent, ".sbom-old-"
-            )
-            history_backup = self._move_to_backup(
-                self.history_path, parent, ".sbom-history-old-"
-            )
-            os.replace(app_tmp, self.output)
-            app_tmp = None
-            app_installed = True
-            os.replace(history_tmp, self.history_path)
-            history_tmp = None
-            history_installed = True
-        except Exception:
-            if app_installed:
-                try:
-                    self.output.unlink(missing_ok=True)
-                except OSError:
-                    pass
-            if history_installed:
-                try:
-                    self.history_path.unlink(missing_ok=True)
-                except OSError:
-                    pass
-            if app_backup is not None:
-                try:
-                    os.replace(app_backup, self.output)
-                    app_backup = None
-                except OSError:
-                    pass
-            if history_backup is not None:
-                try:
-                    os.replace(history_backup, self.history_path)
-                    history_backup = None
-                except OSError:
-                    pass
-            raise
-        finally:
-            for path in (app_tmp, history_tmp, app_backup, history_backup):
-                if path is not None:
-                    try:
-                        path.unlink(missing_ok=True)
-                    except OSError:
-                        pass
+        self._last_inventory_observed_at = observed_at
 
     @staticmethod
     def _write_temp(value: dict[str, Any], parent: Path, prefix: str) -> Path:
@@ -652,28 +548,6 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
             raise
         return path
 
-    @staticmethod
-    def _move_to_backup(
-        target: Path, parent: Path, prefix: str
-    ) -> Path | None:
-        if not target.exists():
-            return None
-        descriptor, name = tempfile.mkstemp(
-            prefix=prefix, suffix=".json", dir=parent
-        )
-        os.close(descriptor)
-        backup = Path(name)
-        try:
-            backup.unlink(missing_ok=True)
-            os.replace(target, backup)
-            return backup
-        except Exception:
-            try:
-                backup.unlink(missing_ok=True)
-            except OSError:
-                pass
-            raise
-
     def resolve(
         self, module_name: str, filename: str | None = None
     ) -> dict[str, Any]:
@@ -682,35 +556,22 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
         name = _bounded(module_name, 512)
         with self._lock:
             snapshot = self._published
-            result: dict[str, Any] = {
-                "sbom_id": self.sbom_id,
-                "revision": snapshot["revision"],
-                "release_id": snapshot["release_id"],
-                "status": "unresolved",
-            }
             item = snapshot["module_map"].get(name)
             if item is None:
-                result["reason"] = "unknown_module"
-                return component_reference(result, self.application_id)
+                return {}
             expected = item.get("source")
             if filename is not None:
                 actual = _normalize_origin_for_lookup(filename)
                 if expected and actual != expected:
-                    result["reason"] = "module_source_mismatch"
-                    return component_reference(result, self.application_id)
-            result.update(
-                {
-                    key: value
-                    for key, value in item.items()
-                    if key in {"status", "bom-ref", "reason"}
-                }
+                    return {}
+            return component_reference(
+                snapshot["components"].get(item.get("bom-ref"))
             )
-            return component_reference(result, self.application_id)
 
     def health(self) -> dict[str, Any]:
         with self._lock:
             snapshot = self._published
-            if snapshot["revision"] == 0:
+            if not self._last_success_monotonic:
                 status = (
                     "degraded"
                     if self._last_failure_monotonic
@@ -723,16 +584,11 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
             return {
                 "event_name": "beacon.security.sbom.health",
                 "status": status,
-                "sbom_id": self.sbom_id,
-                "revision": snapshot["revision"],
-                "application_id": self.application_id,
-                "release_id": snapshot["release_id"],
                 "instance_id": self.instance_id,
                 "last_refresh_at": self._last_refresh_at or None,
                 "last_failure_at": self._last_failure_at or None,
                 "last_error_type": self._last_error_type or None,
-                "current_components": len(snapshot["record_digests"]),
-                "history_count": len(self._history),
+                "current_components": len(snapshot["components"]),
                 "completeness": "incomplete",
                 "reasons": sorted(snapshot["reasons"]),
             }
@@ -742,7 +598,7 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
         if callback is None:
             return
         try:
-            callback(event_record(event, self.identity))
+            callback(event)
         except Exception:
             # Export callbacks are outside the inventory's persistence contract.
             # A broken observer must not stop refreshes or invalidate a snapshot.

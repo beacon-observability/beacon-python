@@ -10,6 +10,17 @@ from pathlib import Path
 
 from cyclonedx.schema import SchemaVersion
 from cyclonedx.validation.json import JsonValidator
+from jsonschema import Draft202012Validator, FormatChecker
+
+_EVENT_SCHEMA = json.loads(
+    (
+        Path(__file__).resolve().parent
+        / "fixtures/spec/beacon-security-event-v2.schema.json"
+    ).read_text()
+)
+_EVENT_VALIDATOR = Draft202012Validator(
+    _EVENT_SCHEMA, format_checker=FormatChecker()
+)
 
 
 def _sbom_env(monkeypatch, output: Path, **values):
@@ -51,7 +62,7 @@ def _refresh(monkeypatch, tmp_path, **values):
     inventory = SbomInventory(
         {
             "application_id": "qa-sbom-app",
-            "instance_id": "qa-sbom-instance",
+            "instance_id": "233cf30d-c73b-4365-b052-0e7159ee6268",
             "service": {"service.name": "qa-sbom"},
             "runtime": {"language": "python"},
         },
@@ -127,7 +138,7 @@ def test_distribution_licenses_survive_cached_and_expired_metadata(
     inventory.close()
 
 
-def test_fresh_metadata_loaded_deployed_and_cyclonedx_schema_with_revision_association(
+def test_fresh_metadata_loaded_deployed_and_v2_inventory_with_current_document(
     monkeypatch, tmp_path
 ):
     """A fresh pip distribution is represented without synthetic wheel/RECORD hashes."""
@@ -141,7 +152,7 @@ def test_fresh_metadata_loaded_deployed_and_cyclonedx_schema_with_revision_assoc
     assert document["bomFormat"] == "CycloneDX"
     assert document["specVersion"] == "1.7"
     assert isinstance(document["version"], int) and document["version"] >= 1
-    assert document["serialNumber"] == inventory.sbom_id
+    assert document["serialNumber"] == "urn:uuid:" + inventory.instance_id
 
     validation_errors = _validate_official_schema(
         output / "application.cdx.json"
@@ -165,26 +176,26 @@ def test_fresh_metadata_loaded_deployed_and_cyclonedx_schema_with_revision_assoc
     assert "RECORD" not in json.dumps(component, ensure_ascii=False)
 
     resolved = inventory.resolve("pytest")
-    assert resolved["status"] == "resolved"
-    assert resolved["sbom_id"] == document["serialNumber"]
-    assert resolved["revision"] == document["version"]
-    assert resolved["bom-ref"] == component["bom-ref"]
+    assert resolved["name"] == "pytest"
+    assert resolved["version"] == expected_version
+    assert len(resolved["hash"]) == 32
 
     namespace = inventory.resolve("opentelemetry")
-    assert namespace["status"] == "unresolved"
-    assert namespace["reason"] == "namespace_package_ambiguity"
+    assert namespace == {}
     snapshots = [
         item
         for item in events
-        if item.get("event_name") == "beacon.security.sbom.snapshot"
+        if item.get("event_name") == "beacon.security.sbom.inventory"
     ]
-    assert snapshots and snapshots[-1]["revision"] == document["version"]
+    assert snapshots and snapshots[-1]["started_at"] == inventory.started_at
+    for snapshot in snapshots:
+        _EVENT_VALIDATOR.validate(snapshot)
     dependencies = [row for part in snapshots for row in part["dependencies"]]
-    assert {"name": "pytest", "version": expected_version} in dependencies
+    assert resolved in dependencies
     assert all(set(row) <= {"name", "version", "hash"} for row in dependencies)
 
 
-def test_snapshot_envelope_failure_keeps_local_revision_uncommitted_and_allows_retry(
+def test_inventory_envelope_failure_emits_nothing_and_allows_retry(
     monkeypatch, tmp_path
 ):
     from beacon_security.sbom import SbomInventory
@@ -197,30 +208,20 @@ def test_snapshot_envelope_failure_keeps_local_revision_uncommitted_and_allows_r
     )
     try:
         inventory.refresh()
-        assert any(
-            event["event_name"] == "beacon.security.sbom.update_failed"
-            for event in events
-        )
-        assert inventory.health()["revision"] == 0
+        assert events == []
         assert not (output / "application.cdx.json").exists()
         monkeypatch.setenv("BEACON_SECURITY_EVIDENCE_MAX_BYTES", "65536")
         inventory.refresh()
-        assert (
-            _document(output)["version"] == inventory.health()["revision"] == 1
-        )
-        assert (
-            next(
-                event
-                for event in events
-                if event["event_name"] == "beacon.security.sbom.snapshot"
-            )["revision"]
-            == 1
+        assert _document(output)["version"] == 1
+        assert any(
+            event["event_name"] == "beacon.security.sbom.inventory"
+            for event in events
         )
     finally:
         inventory.close()
 
 
-def test_compact_snapshot_chunks_preserve_loaded_identities_and_fallback_hash(
+def test_inventory_chunks_preserve_loaded_identities_and_metadata_hash(
     monkeypatch,
 ):
     from beacon_security._sbom_events import dependency_snapshot
@@ -250,11 +251,16 @@ def test_compact_snapshot_chunks_preserve_loaded_identities_and_fallback_hash(
             {"type": "library", "name": "not-loaded", "version": "2.0"},
         ]
     )
-    parts = dependency_snapshot(
-        {"sbom_id": "fixture", "revision": 3}, records, {}
-    )
+    envelope = {
+        "instance_id": "233cf30d-c73b-4365-b052-0e7159ee6268",
+        "observed_at": "2026-10-29T00:00:00.000Z",
+        "started_at": "2026-10-29T00:00:00.000Z",
+        "uptime_ms": 1000,
+    }
+    parts = dependency_snapshot(envelope, records, {})
     assert len(parts) > 1
     for index, part in enumerate(parts):
+        _EVENT_VALIDATOR.validate(part)
         assert (
             len(
                 json.dumps(
@@ -266,8 +272,11 @@ def test_compact_snapshot_chunks_preserve_loaded_identities_and_fallback_hash(
         assert part["part_index"] == index and part["part_count"] == len(parts)
     dependencies = [row for part in parts for row in part["dependencies"]]
     assert len(dependencies) == 151
-    assert {"name": "unknown", "version": "", "hash": "abcd"} in dependencies
-    assert dependency_snapshot({}, [], {})[0]["dependencies"] == []
+    from beacon_security._sbom_events import component_identity
+
+    assert component_identity("unknown", "") in dependencies
+    assert dependency_snapshot(envelope, [], {})[0]["dependencies"] == []
+    assert "part_count" not in dependency_snapshot(envelope, [], {})[0]
 
 
 def test_build_declared_component_is_explicitly_mapped_without_implicit_runtime_edges(
@@ -341,7 +350,7 @@ def test_build_declared_component_is_explicitly_mapped_without_implicit_runtime_
     ]
 
 
-def test_sbom_max_components_bounds_emitted_document_components(
+def test_sbom_max_components_prevents_incomplete_publication(
     monkeypatch, tmp_path
 ):
     """The component budget includes the metadata application component."""
@@ -385,12 +394,7 @@ def test_sbom_max_components_bounds_emitted_document_components(
         None,
     )
     inventory.refresh()
-    document = _document(output)
-    emitted = list(document["components"])
-    application = document.get("metadata", {}).get("component")
-    if isinstance(application, dict):
-        emitted.append(application)
-    assert len(emitted) <= 1
+    assert not (output / "application.cdx.json").exists()
 
 
 def test_sbom_max_entries_bounds_archive_entry_scan_without_hash(
@@ -479,15 +483,14 @@ def test_sbom_replacement_invalidates_loaded_module_mapping(
 
     inventory.refresh()
     first = inventory.resolve("qa_replace")
-    assert first["status"] == "resolved"
+    assert first["name"] == "qa-replace"
 
     module_path.write_text(
         "VALUE = 'replacement-with-different-size'\n", encoding="utf-8"
     )
     inventory.refresh()
     replaced = inventory.resolve("qa_replace")
-    assert replaced["status"] == "unresolved"
-    assert replaced["reason"] == "artifact_replaced_loaded_mapping_invalidated"
+    assert replaced == {}
 
 
 def test_sbom_rechecks_editable_root_symlinks_on_each_refresh(
@@ -536,112 +539,100 @@ def test_sbom_rechecks_editable_root_symlinks_on_each_refresh(
         lambda: [_ModuleObservation("qa_editable", str(module))],
     )
     inventory.refresh()
-    assert inventory.resolve("qa_editable")["status"] == "resolved"
+    assert inventory.resolve("qa_editable")["name"] == "qa-editable"
     linked.unlink()
     linked.symlink_to(second, target_is_directory=True)
     inventory.refresh()
-    assert (
-        inventory.resolve("qa_editable")["reason"]
-        == "module_origin_unmatched_metadata"
-    )
+    assert inventory.resolve("qa_editable") == {}
     linked.unlink()
     linked.symlink_to(first, target_is_directory=True)
     inventory.refresh()
-    assert inventory.resolve("qa_editable")["status"] == "resolved"
+    assert inventory.resolve("qa_editable")["name"] == "qa-editable"
 
 
-def test_history_preserves_unchanged_removed_restored_and_failed_publication(
+def test_unchanged_inventory_republishes_without_history(
     monkeypatch, tmp_path
 ):
     from beacon_security._sbom_metadata import _MetadataCache
     from beacon_security.sbom import SbomInventory
 
-    output = tmp_path / "history-output"
-    build = tmp_path / "build.cdx.json"
-    _sbom_env(monkeypatch, output, BEACON_SECURITY_SBOM_BUILD_FILE=build)
-    inventory = SbomInventory({"application_id": "history-test"}, output, None)
-    monkeypatch.setattr(inventory, "_loaded_modules", lambda: [])
+    output = tmp_path / "inventory"
+    _sbom_env(
+        monkeypatch, output, BEACON_SECURITY_LOCAL_OUTPUT_ENABLED="false"
+    )
+    events = []
+    inventory = SbomInventory(
+        {"instance_id": "233cf30d-c73b-4365-b052-0e7159ee6268"},
+        output,
+        events.append,
+    )
+    monkeypatch.setattr(inventory, "_loaded_modules", list)
     monkeypatch.setattr(
         inventory, "_load_metadata", lambda now: _MetadataCache(now, [], {})
     )
-    first = {
-        "type": "library",
-        "bom-ref": "first",
-        "name": "first",
-        "version": "1",
-        "licenses": [{"license": {"name": "MIT"}}],
-    }
-    second = {
-        "type": "library",
-        "bom-ref": "second",
-        "name": "second",
-        "version": "1",
-    }
-
-    def write(components):
-        build.write_text(
-            json.dumps(
-                {
-                    "bomFormat": "CycloneDX",
-                    "specVersion": "1.7",
-                    "components": components,
-                }
-            )
-        )
-
-    def history():
-        return json.loads(inventory.history_path.read_text())
-
-    def entry(document, ref):
-        return next(
-            row for row in document["entries"] if row["bom-ref"] == ref
-        )
-
-    write([first])
     inventory.refresh()
-    ref = next(
-        c for c in _document(output)["components"] if c["name"] == "first"
-    )["bom-ref"]
-    initial = entry(history(), ref)
     inventory.refresh()
-    assert inventory.health()["revision"] == 1
-    write([first, second])
-    inventory.refresh()
-    assert inventory.health()["revision"] == 2
-    assert entry(history(), ref) == initial
-
-    first["licenses"] = [{"license": {"name": "Apache-2.0"}}]
-    write([first, second])
-    previous_document = inventory.output.read_bytes()
-    previous_history = inventory.history_path.read_bytes()
-    with monkeypatch.context() as failure:
-
-        def fail_write(*args):
-            raise OSError("simulated full disk")
-
-        failure.setattr(inventory, "_write_temp", fail_write)
-        inventory.refresh()
-    assert inventory.health()["revision"] == 2
-    assert inventory.output.read_bytes() == previous_document
-    assert inventory.history_path.read_bytes() == previous_history
-    inventory.refresh()
-    assert inventory.health()["revision"] == 3
-    assert entry(history(), ref)["first_seen"] == initial["first_seen"]
-    assert (
-        next(
-            c for c in _document(output)["components"] if c["name"] == "first"
-        )["licenses"]
-        == first["licenses"]
+    assert len(events) == 2
+    assert all(
+        event["event_name"] == "beacon.security.sbom.inventory"
+        for event in events
     )
+    assert all(event["dependencies"] == [] for event in events)
+    assert events[0]["observed_at"] < events[1]["observed_at"]
+    assert events[0]["started_at"] == events[1]["started_at"]
+    assert not (output / "sbom-history.json").exists()
+    assert not (output / "application.cdx.json").exists()
+    inventory.close()
 
-    write([second])
+
+def test_failed_collection_keeps_last_inventory_until_recovery(
+    monkeypatch, tmp_path
+):
+    from beacon_security._sbom_events import component_identity
+    from beacon_security._sbom_metadata import _MetadataCache
+    from beacon_security.sbom import SbomInventory
+
+    assert component_identity("org.example:library-a", "1.0.0")["hash"] == (
+        "b783176a5feb4aafd51a712235824a9c"
+    )
+    output = tmp_path / "inventory"
+    _sbom_env(
+        monkeypatch, output, BEACON_SECURITY_LOCAL_OUTPUT_ENABLED="false"
+    )
+    monkeypatch.delenv("BEACON_SECURITY_SBOM_REFRESH_SECONDS")
+    events = []
+    inventory = SbomInventory(
+        {"instance_id": "233cf30d-c73b-4365-b052-0e7159ee6268"},
+        output,
+        events.append,
+    )
+    assert inventory.refresh_seconds == 300
+    monkeypatch.setenv("BEACON_SECURITY_SBOM_REFRESH_SECONDS", "0")
+    assert (
+        SbomInventory(inventory.identity, output, None).refresh_seconds == 300
+    )
+    monkeypatch.setattr(inventory, "_loaded_modules", list)
+    monkeypatch.setattr(
+        inventory, "_load_metadata", lambda now: _MetadataCache(now, [], {})
+    )
     inventory.refresh()
-    assert entry(history(), ref)["state"] == "removed"
-    write([first, second])
+    assert len(events) == 1 and events[0]["dependencies"] == []
+    inventory._metadata_limit_reason = "declared_component_limit"
     inventory.refresh()
-    restored = entry(history(), ref)
-    assert restored["state"] == "current"
-    assert restored["first_seen"] == initial["first_seen"]
-    assert inventory.health()["revision"] == 5
-    assert inventory.health()["current_components"] == 3
+    assert len(events) == 1
+    inventory._metadata_limit_reason = ""
+    monkeypatch.setattr(
+        inventory,
+        "_load_metadata",
+        lambda _now: (_ for _ in ()).throw(OSError("metadata unavailable")),
+    )
+    inventory.refresh()
+    assert len(events) == 1
+    assert inventory.health()["status"] == "degraded"
+    monkeypatch.setattr(
+        inventory, "_load_metadata", lambda now: _MetadataCache(now, [], {})
+    )
+    inventory.refresh()
+    assert len(events) == 2
+    assert events[1]["observed_at"] > events[0]["observed_at"]
     inventory.close()
