@@ -23,11 +23,6 @@ SECURITY_PROPERTIES_FILE = (
     ROOT / "beacon-otel/src/beacon_security/security-spec.properties"
 )
 SECURITY_FIXTURES = {
-    "schemaSha256": (
-        ROOT
-        / "beacon-otel/tests/security/fixtures/spec"
-        / "beacon-security-event-v1.schema.json"
-    ),
     "fingerprintSha256": (
         ROOT / "beacon-otel/tests/security/fixtures/spec/fingerprint-v1.json"
     ),
@@ -207,8 +202,8 @@ def check_security_provenance() -> None:
         "Invalid Security contract commit",
     )
     require(
-        contract["schemaVersion"] == contract["fingerprintVersion"] == 1,
-        "Beacon Security must use schema and fingerprint version 1",
+        contract["schemaVersion"] == 2 and contract["fingerprintVersion"] == 1,
+        "Beacon Security must use schema version 2 and fingerprint version 1",
     )
 
     properties = dict(
@@ -228,7 +223,15 @@ def check_security_provenance() -> None:
         },
         "Packaged Security contract pin differs from migration lock",
     )
-    for field, path in SECURITY_FIXTURES.items():
+    fixtures = {
+        **SECURITY_FIXTURES,
+        "schemaSha256": (
+            ROOT
+            / "beacon-otel/tests/security/fixtures/spec"
+            / f"beacon-security-event-v{contract['schemaVersion']}.schema.json"
+        ),
+    }
+    for field, path in fixtures.items():
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         require(
             digest == contract[field],
