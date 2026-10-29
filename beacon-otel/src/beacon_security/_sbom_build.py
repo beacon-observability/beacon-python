@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from . import config
 from ._sbom_metadata import (
@@ -30,18 +31,12 @@ class _BuildSupport:
     """Mixin for build declaration merging and CycloneDX document assembly."""
 
     def _application_record(self) -> dict[str, Any]:
-        service = (
-            self.identity.get("service")
-            if isinstance(self.identity.get("service"), dict)
-            else {}
-        )
-        name = (
-            _bounded(service.get("service.name"), 512) or self.application_id
-        )
+        service = self.identity.get("service") if isinstance(self.identity.get("service"), dict) else {}
+        name = _bounded(service.get("service.name"), 512) or self.instance_id
         version = _bounded(service.get("service.version"), 256)
         record: dict[str, Any] = {
             "type": "application",
-            "bom-ref": self.application_id,
+            "bom-ref": self.instance_id,
             "name": name,
         }
         if version:
@@ -54,9 +49,7 @@ class _BuildSupport:
             if not isinstance(values, dict):
                 continue
             for key, value in sorted(values.items()):
-                if isinstance(value, (str, int, float, bool)) and _bounded(
-                    value, 512
-                ):
+                if isinstance(value, (str, int, float, bool)) and _bounded(value, 512):
                     properties.append(
                         {
                             "name": prefix + _bounded(key, 256),
@@ -101,21 +94,6 @@ class _BuildSupport:
             )
         return tools
 
-    def _release_id(
-        self, records: dict[str, dict[str, Any]]
-    ) -> tuple[str, str]:
-        digests = sorted(
-            str(entry["hashes"][0]["content"])
-            for entry in records.values()
-            if isinstance(entry.get("hashes"), list)
-            and entry["hashes"]
-            and entry["hashes"][0].get("content")
-        )
-        status = "artifact_digest" if digests else "incomplete"
-        return "release-" + _sha256(
-            self.application_id + "|" + "|".join(digests)
-        ), status
-
     @staticmethod
     def _quality(records: dict[str, dict[str, Any]]) -> dict[str, int]:
         values = {
@@ -132,17 +110,12 @@ class _BuildSupport:
             values["with_hash"] += int(bool(record.get("hashes")))
             values["with_license"] += int(bool(record.get("licenses")))
             for prop in record.get("properties", []):
-                if (
-                    prop.get("name") == "beacon:security:sbom:loaded"
-                    and prop.get("value") == "true"
-                ):
+                if prop.get("name") == "beacon:security:sbom:loaded" and prop.get("value") == "true":
                     values["loaded_components"] += 1
                     break
         return values
 
-    def _load_build(
-        self, now: float, reasons: set[str]
-    ) -> dict[str, Any] | None:
+    def _load_build(self, now: float, reasons: set[str]) -> dict[str, Any] | None:
         if not self.build_file:
             return None
         path = Path(self.build_file).expanduser().absolute()
@@ -159,10 +132,7 @@ class _BuildSupport:
             reasons.add("build_sbom_unreadable")
             self._build_failure_reason = "build_sbom_unreadable"
             return None
-        if (
-            self._build_cache_key == key
-            and now - self._build_cache_at < self.cache_seconds
-        ):
+        if self._build_cache_key == key and now - self._build_cache_at < self.cache_seconds:
             return self._build_cache
         self._build_cache_key = key
         self._build_cache_at = now
@@ -178,10 +148,7 @@ class _BuildSupport:
             if len(raw) > self.max_build_bytes:
                 raise ValueError("build SBOM exceeds byte limit")
             value = json.loads(raw.decode("utf-8"))
-            if (
-                not isinstance(value, dict)
-                or value.get("bomFormat") != "CycloneDX"
-            ):
+            if not isinstance(value, dict) or value.get("bomFormat") != "CycloneDX":
                 raise ValueError("not CycloneDX")
             if not self._bounded_json(value):
                 raise ValueError("build SBOM structure exceeds limit")
@@ -194,9 +161,7 @@ class _BuildSupport:
             return None
 
     @staticmethod
-    def _bounded_json(
-        value: Any, depth: int = 0, count: list[int] | None = None
-    ) -> bool:
+    def _bounded_json(value: Any, depth: int = 0, count: list[int] | None = None) -> bool:
         if count is None:
             count = [0]
         if depth > 64:
@@ -212,10 +177,7 @@ class _BuildSupport:
             )
         if isinstance(value, list):
             return (
-                all(
-                    _BuildSupport._bounded_json(item, depth + 1, count)
-                    for item in value[:100000]
-                )
+                all(_BuildSupport._bounded_json(item, depth + 1, count) for item in value[:100000])
                 and len(value) <= 100000
             )
         return isinstance(value, (str, int, float, bool)) or value is None
@@ -235,24 +197,12 @@ class _BuildSupport:
             if purl:
                 purl_matches[purl].append(ref)
         references: dict[str, str] = {}
-        metadata = (
-            build.get("metadata")
-            if isinstance(build.get("metadata"), dict)
-            else {}
-        )
-        root = (
-            metadata.get("component")
-            if isinstance(metadata.get("component"), dict)
-            else {}
-        )
+        metadata = build.get("metadata") if isinstance(build.get("metadata"), dict) else {}
+        root = metadata.get("component") if isinstance(metadata.get("component"), dict) else {}
         root_ref = _bounded(root.get("bom-ref"), _MAX_TEXT)
         if root_ref:
             references[root_ref] = app_ref
-        components = (
-            build.get("components")
-            if isinstance(build.get("components"), list)
-            else []
-        )
+        components = build.get("components") if isinstance(build.get("components"), list) else []
         for index, value in enumerate(components[:_MAX_DECLARED_COMPONENTS]):
             if not isinstance(value, dict):
                 reasons.add("invalid_declared_component")
@@ -268,19 +218,14 @@ class _BuildSupport:
                     "true",
                 )
                 if value.get("licenses") and not target.get("licenses"):
-                    target["licenses"] = self._declared_licenses(
-                        value.get("licenses")
-                    )
+                    target["licenses"] = self._declared_licenses(value.get("licenses"))
                     _property(
                         target["properties"],
                         "beacon:security:sbom:license-source",
                         "build-sbom-declaration",
                     )
                 if old_ref:
-                    if (
-                        old_ref in references
-                        and references[old_ref] != matches[0]
-                    ):
+                    if old_ref in references and references[old_ref] != matches[0]:
                         reasons.add("ambiguous_declared_component")
                         references.pop(old_ref, None)
                     else:
@@ -310,11 +255,7 @@ class _BuildSupport:
             reasons.add("declared_component_limit")
 
         edges: dict[str, set[str]] = defaultdict(set)
-        dependency_list = (
-            build.get("dependencies")
-            if isinstance(build.get("dependencies"), list)
-            else []
-        )
+        dependency_list = build.get("dependencies") if isinstance(build.get("dependencies"), list) else []
         for value in dependency_list[:_MAX_DECLARED_COMPONENTS]:
             if not isinstance(value, dict):
                 continue
@@ -329,11 +270,7 @@ class _BuildSupport:
                     reasons.add("unresolved_declared_dependency")
                     continue
                 edges[source].add(mapped)
-        return [
-            {"ref": source, "dependsOn": sorted(targets)}
-            for source, targets in sorted(edges.items())
-            if targets
-        ]
+        return [{"ref": source, "dependsOn": sorted(targets)} for source, targets in sorted(edges.items()) if targets]
 
     @staticmethod
     def _declared_licenses(value: Any) -> list[dict[str, Any]]:
@@ -351,9 +288,7 @@ class _BuildSupport:
                 if name:
                     result.append({"license": {"name": name}})
             elif item.get("expression"):
-                result.append(
-                    {"expression": _bounded(item.get("expression"), 512)}
-                )
+                result.append({"expression": _bounded(item.get("expression"), 512)})
         return result
 
     @staticmethod
@@ -362,9 +297,7 @@ class _BuildSupport:
         group = _bounded(value.get("group"), 512)
         version = _bounded(value.get("version"), 256)
         purl = _bounded(value.get("purl"), _MAX_TEXT)
-        ref = "urn:beacon:security:declared:" + _sha256(
-            "|".join((purl, group, name, version, scope))
-        )
+        ref = "urn:beacon:security:declared:" + _sha256("|".join((purl, group, name, version, scope)))
         properties = [
             {
                 "name": "beacon:security:sbom:identity-source",
@@ -407,33 +340,19 @@ class _BuildSupport:
 
     def _document(
         self,
-        revision: int,
         application: dict[str, Any],
         tools: list[dict[str, Any]],
         records: dict[str, dict[str, Any]],
         dependencies: list[dict[str, Any]],
         reasons: set[str],
-        release_id: str,
-        release_status: str,
         quality: dict[str, int],
         stable_digest: str,
     ) -> dict[str, Any]:
         properties = [
             {"name": "source", "value": "beacon_security"},
             {
-                "name": "beacon:security:application-id",
-                "value": self.application_id,
-            },
-            {"name": "beacon:security:release-id", "value": release_id},
-            {
-                "name": "beacon:security:release:identity-status",
-                "value": release_status,
-            },
-            {
                 "name": "beacon:security:sbom:quality",
-                "value": json.dumps(
-                    quality, sort_keys=True, separators=(",", ":")
-                ),
+                "value": json.dumps(quality, sort_keys=True, separators=(",", ":")),
             },
             {
                 "name": "beacon:security:process-instance-id",
@@ -461,15 +380,15 @@ class _BuildSupport:
         return {
             "bomFormat": "CycloneDX",
             "specVersion": "1.7",
-            "serialNumber": self.sbom_id,
-            "version": revision,
+            "serialNumber": "urn:uuid:" + self.instance_id,
+            "version": 1,
             "metadata": metadata,
             "components": list(records.values()),
             "dependencies": dependencies,
             "compositions": [
                 {
                     "aggregate": "incomplete",
-                    "assemblies": [self.application_id],
+                    "assemblies": [self.instance_id],
                 }
             ],
             "properties": properties,

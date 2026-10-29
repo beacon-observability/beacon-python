@@ -7,10 +7,10 @@
   },
   "contract": {
     "repository": "https://github.com/beacon-observability/beacon-security-spec",
-    "commit": "71ed28c74736741b8f0e133bd66f8b4746722504",
-    "schemaVersion": 1,
+    "commit": "af1b834501210bfd197bf606163680129cc5d09b",
+    "schemaVersion": 2,
     "fingerprintVersion": 1,
-    "schemaSha256": "e777b5938b9bbacb795ed7b089ec71602962a5d75c60d954fa1b55cbbf9c10d8",
+    "schemaSha256": "72fe082c89d8758be8766436ac4429891a4d91110057e69b603294bb178bb7df",
     "fingerprintSha256": "860b1b14e8019f699764b238f0d744b649d259d39f3f3638f02ae8db68cbabc2"
   }
 }

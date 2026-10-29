@@ -7,14 +7,21 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 import pytest
 from beacon_security.ledger import RuntimeLedger
 from beacon_security.state import SecurityState
+from jsonschema import Draft202012Validator, FormatChecker
+
+_SCHEMA = json.loads(
+    (Path(__file__).resolve().parent / "fixtures/spec/beacon-security-event-v2.schema.json").read_text()
+)
+_VALIDATOR = Draft202012Validator(_SCHEMA, format_checker=FormatChecker())
 
 IDENTITY = {
     "application_id": "occurrence-app",
-    "instance_id": "occurrence-instance",
+    "instance_id": "233cf30d-c73b-4365-b052-0e7159ee6268",
 }
 
 
@@ -42,9 +49,7 @@ def occurrence(
     state.source(value, "http.request.parameter", "q")
     marks = state.marks(value)
     if fragment is not None:
-        marks = tuple(
-            replace(mark, start=value.index(fragment)) for mark in marks
-        )
+        marks = tuple(replace(mark, start=value.index(fragment)) for mark in marks)
     try:
         event = state.sink(
             "sql_injection",
@@ -75,15 +80,13 @@ def occurrence(
         state.close()
 
 
-def test_distinct_requests_keep_ids_counts_and_missing_trace(
-    monkeypatch, tmp_path
-) -> None:
+def test_distinct_requests_keep_occurrence_ids_and_missing_trace(monkeypatch, tmp_path) -> None:
     configure(monkeypatch, tmp_path)
     ledger = RuntimeLedger(IDENTITY, "occurrences", tmp_path)
     events = [occurrence(ledger, index) for index in (1, 2, 0)]
     assert len({event["finding_id"] for event in events}) == 1
     assert len({event["occurrence_id"] for event in events}) == 3
-    assert [event["occurrences_total"] for event in events] == [1, 2, 3]
+    assert all("occurrences_total" not in event for event in events)
     assert [event["trace_id"] for event in events] == [
         f"{1:032x}",
         f"{2:032x}",
@@ -95,18 +98,12 @@ def test_distinct_requests_keep_ids_counts_and_missing_trace(
         False,
     ]
     for event in events[1:]:
-        assert event["occurrence_id"] == event["evidence_id"]
-        assert event["aggregation_status"] == "tracked"
-        assert event["truncation_reason"] == "evidence_sampled_out"
-        assert all(
-            event[field] == []
-            for field in ("sources", "propagation", "ranges", "stack")
-        )
+        assert event["evidence_sample_reason"] == "interval"
+        assert not event.get("truncated", False)
+        assert all(event[field] == [] for field in ("sources", "propagation", "ranges", "stack"))
 
 
-def test_aggregation_saturation_preserves_occurrence(
-    monkeypatch, tmp_path
-) -> None:
+def test_aggregation_saturation_preserves_occurrence(monkeypatch, tmp_path) -> None:
     configure(monkeypatch, tmp_path)
     ledger = RuntimeLedger(IDENTITY, "capacity", tmp_path)
     ledger._max_findings = 1
@@ -124,22 +121,14 @@ def test_concurrent_requests_are_independent(monkeypatch, tmp_path) -> None:
     configure(monkeypatch, tmp_path)
     ledger = RuntimeLedger(IDENTITY, "concurrency", tmp_path)
     with ThreadPoolExecutor(max_workers=4) as pool:
-        events = list(
-            pool.map(lambda index: occurrence(ledger, index), range(1, 13))
-        )
+        events = list(pool.map(lambda index: occurrence(ledger, index), range(1, 13)))
     assert len({event["occurrence_id"] for event in events}) == 12
-    assert {event["occurrences_total"] for event in events} == set(
-        range(1, 13)
-    )
-    assert [event["trace_id"] for event in events] == [
-        f"{index:032x}" for index in range(1, 13)
-    ]
+    assert all("occurrences_total" not in event for event in events)
+    assert [event["trace_id"] for event in events] == [f"{index:032x}" for index in range(1, 13)]
 
 
 @pytest.mark.parametrize("fragments", [None, ("12", "1 OR 1=1", "14")])
-def test_lightweight_occurrences_reach_otlp_http(
-    monkeypatch, tmp_path, fragments
-) -> None:
+def test_lightweight_occurrences_reach_otlp_http(monkeypatch, tmp_path, fragments) -> None:
     from beacon_security.exporter import Exporter
 
     from opentelemetry.exporter.otlp.proto.http._log_exporter import (
@@ -157,14 +146,9 @@ def test_lightweight_occurrences_reach_otlp_http(
     class Receiver(BaseHTTPRequestHandler):
         def do_POST(self) -> None:
             request = ExportLogsServiceRequest()
-            request.ParseFromString(
-                self.rfile.read(int(self.headers["Content-Length"]))
-            )
+            request.ParseFromString(self.rfile.read(int(self.headers["Content-Length"])))
             received.extend(
-                log
-                for resource in request.resource_logs
-                for scope in resource.scope_logs
-                for log in scope.log_records
+                log for resource in request.resource_logs for scope in resource.scope_logs for log in scope.log_records
             )
             self.send_response(200)
             self.end_headers()
@@ -202,10 +186,11 @@ def test_lightweight_occurrences_reach_otlp_http(
         findings = [
             (log, json.loads(log.body.string_value))
             for log in received
-            if json.loads(log.body.string_value).get("event_name")
-            == "beacon.security.finding"
+            if json.loads(log.body.string_value).get("event_name") == "beacon.security.finding"
         ]
         assert len(findings) == 3
+        for _, body in findings:
+            _VALIDATOR.validate(body)
         # Delivery can prioritize suspected records across requests. Compare
         # each occurrence by its own trace identity, not global FIFO order.
         findings.sort(key=lambda item: item[1]["trace_id"])
@@ -217,18 +202,15 @@ def test_lightweight_occurrences_reach_otlp_http(
             False,
         ]
         if fragments:
-            assert [
-                event["attack_evidence"]["status"] for _, event in findings
-            ] == ["no_evidence", "suspected", "no_evidence"]
-            assert all(
-                event["attack_evidence"]["outcome"] == "not_assessed"
-                for _, event in findings
-            )
-        assert [log.trace_id.hex() for log, _ in findings] == [
-            f"{index:032x}" for index in (1, 2, 3)
-        ]
+            assert [event["attack_evidence"]["status"] for _, event in findings] == [
+                "no_evidence",
+                "suspected",
+                "no_evidence",
+            ]
+            assert all(set(event["attack_evidence"]) == {"status", "reason"} for _, event in findings)
+        assert [log.trace_id.hex() for log, _ in findings] == [f"{index:032x}" for index in (1, 2, 3)]
         for _, event in findings:
-            assert event["trace_availability"] == "not_guaranteed_by_trace_id"
+            assert "trace_availability" not in event
     finally:
         exporter.close()
         provider.shutdown()
