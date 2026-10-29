@@ -8,6 +8,8 @@ Stable release `1.2.1` fixes Security request lifecycles, propagation and SQL an
 
 Stable release `1.2.2` publishes the Contrib `v0.66b1` / Core `v1.45.1` baseline while preserving Beacon Security and Profiling. See [release notes](releases/1.2.2.md) and the [public-artifact acceptance record](validation/1.2.2.md).
 
+Version `1.2.3` prepares Security telemetry schema v2 after [PR #66](https://github.com/beacon-observability/beacon-python/pull/66). It is pending publication; see [candidate release notes](releases/1.2.3.md).
+
 ## Code and Validation Resources
 
 | Item | Location |
@@ -31,4 +33,4 @@ uvx --from uv==0.12.1 uv run --frozen --package beacon-otel --with pytest pytest
 uvx --from uv==0.12.1 uv run --frozen --package beacon-profiling --with pytest pytest -q sdk-extension/beacon-profiling/tests
 ```
 
-The repository currently provides `beacon-otel`, the `beacon` command, and `beacon-profiling`. Stable release `1.2.1` embeds opt-in Beacon Security in `beacon-otel`. Security remains disabled by default, follows the pinned schema and fingerprint version 1 contract, and does not create local files unless explicitly enabled. Its migration and contract provenance are recorded in [`security-migration.lock.json`](security-migration.lock.json), while language-specific use and Kubernetes configuration are documented in the [`beacon-otel` README](../beacon-otel/README.md#beacon-security). The default profile export interval is configurable and set to 60 seconds. See [`validation/1.2.2.md`](validation/1.2.2.md) for the current release acceptance record and [`validation/0.1.0rc2.md`](validation/0.1.0rc2.md) for backend evidence. The legacy `gtrace` distribution has been removed from this repository. Inherited upstream or legacy-repository release workflows must not be treated as Beacon release entry points.
+The repository currently provides `beacon-otel`, the `beacon` command, and `beacon-profiling`. Security is embedded in `beacon-otel`, remains disabled by default, and does not create local files unless explicitly enabled. The `1.2.3` source follows the pinned Security schema v2 and fingerprint v1 contract. Its migration and contract provenance are recorded in [`security-migration.lock.json`](security-migration.lock.json), while language-specific use and Kubernetes configuration are documented in the [`beacon-otel` README](../beacon-otel/README.md#beacon-security). The default profile export interval is configurable and set to 60 seconds. See [`validation/1.2.2.md`](validation/1.2.2.md) for the current public release acceptance record and [`validation/0.1.0rc2.md`](validation/0.1.0rc2.md) for backend evidence. The legacy `gtrace` distribution has been removed from this repository. Inherited upstream or legacy-repository release workflows must not be treated as Beacon release entry points.

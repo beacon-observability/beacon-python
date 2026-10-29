@@ -35,7 +35,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-profiling = ["beacon-profiling == 1.2.2"]
+profiling = ["beacon-profiling == 1.2.3"]
 requests = ["opentelemetry-instrumentation-requests == 0.66b1"]
 flask = ["opentelemetry-instrumentation-flask == 0.66b1"]
 fastapi = ["opentelemetry-instrumentation-fastapi == 0.66b1"]
