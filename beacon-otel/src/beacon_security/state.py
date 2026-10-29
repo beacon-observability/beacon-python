@@ -16,7 +16,11 @@ from .tracking import ByteBudget, Mark, reference, shared_scalar
 
 
 def stamp() -> str:
-    return dt.datetime.now(dt.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    return (
+        dt.datetime.now(dt.timezone.utc)
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z")
+    )
 
 
 class SecurityState:
@@ -55,7 +59,9 @@ class SecurityState:
         self.retained_bytes = 0
         self.tracking_exhausted = False
         self.max_objects = config.limit("beacon.security.max.objects", 4096)
-        self.max_bytes = config.limit("beacon.security.max.tracked.bytes", 1024 * 1024)
+        self.max_bytes = config.limit(
+            "beacon.security.max.tracked.bytes", 1024 * 1024
+        )
         self.max_body_buffer_bytes = min(
             self.max_bytes,
             config.limit(
@@ -66,7 +72,9 @@ class SecurityState:
         self._body_buffer_bytes = 0
         self._body_buffer_objects: set[int] = set()
         self.max_nodes = config.limit("beacon.security.max.nodes", 8192)
-        self.max_marks = config.limit("beacon.security.max.marks-per-object", 64)
+        self.max_marks = config.limit(
+            "beacon.security.max.marks-per-object", 64
+        )
         self.max_findings = config.limit("beacon.security.max.findings", 32)
         self.bind_span(trace.get_current_span())
 
@@ -75,7 +83,10 @@ class SecurityState:
         if not context.is_valid:
             return
         with self.lock:
-            if not self.server_span_id or getattr(span, "kind", None) == trace.SpanKind.SERVER:
+            if (
+                not self.server_span_id
+                or getattr(span, "kind", None) == trace.SpanKind.SERVER
+            ):
                 self.trace_id = format(context.trace_id, "032x")
                 self.server_span_id = format(context.span_id, "016x")
                 self.server_span = span
@@ -92,18 +103,31 @@ class SecurityState:
 
     def marks(self, value) -> tuple[Mark, ...]:
         with self.lock:
-            if self.closed or not self.collection_enabled or id(value) in self.ambiguous:
+            if (
+                self.closed
+                or not self.collection_enabled
+                or id(value) in self.ambiguous
+            ):
                 return ()
             entry = self.objects.get(id(value))
             if entry is None or entry.value() is not value:
                 return ()
             if not self.ambiguous_sources:
                 return entry.marks
-            return tuple(mark for mark in entry.marks if mark.source_id not in self.ambiguous_sources)
+            return tuple(
+                mark
+                for mark in entry.marks
+                if mark.source_id not in self.ambiguous_sources
+            )
 
     def put(self, value, marks):
         with self.lock:
-            if self.closed or not self.collection_enabled or value is None or id(value) in self.ambiguous:
+            if (
+                self.closed
+                or not self.collection_enabled
+                or value is None
+                or id(value) in self.ambiguous
+            ):
                 return
             key = id(value)
             previous = self.objects.get(key)
@@ -137,7 +161,8 @@ class SecurityState:
                             unit=unit,
                         )
                         for m in marks
-                        if m.start < size and (m.end is None or m.end > m.start)
+                        if m.start < size
+                        and (m.end is None or m.end > m.start)
                     )
                 if not previous and shared_scalar(value):
                     self.gap("shared_scalar_identity")
@@ -188,13 +213,19 @@ class SecurityState:
     def capture(self, value, kind, name, location=""):
         self.bind_span(trace.get_current_span())
         location = location or caller_location()
-        if kind == "http.request.body" and name == "body" and type(value) in (bytes, bytearray) and value:
+        if (
+            kind == "http.request.body"
+            and name == "body"
+            and type(value) in (bytes, bytearray)
+            and value
+        ):
             with self.lock:
                 key = id(value)
                 previous = self.objects.get(key)
                 new_buffer = previous is None or previous.value() is not value
                 if new_buffer and (
-                    self._body_buffer_bytes + sys.getsizeof(value) > self.max_body_buffer_bytes
+                    self._body_buffer_bytes + sys.getsizeof(value)
+                    > self.max_body_buffer_bytes
                     or len(self._body_buffer_objects) >= self.max_objects // 4
                 ):
                     # Reserve capacity for decoded business fields. This is
@@ -268,28 +299,42 @@ class SecurityState:
 
     def source(self, value, kind, name, location=""):
         with self.lock:
-            if self.closed or not self.collection_enabled or type(value) not in (str, bytes, bytearray) or not value:
+            if (
+                self.closed
+                or not self.collection_enabled
+                or type(value) not in (str, bytes, bytearray)
+                or not value
+            ):
                 return value
             signature = f"{kind}|{str(name)[:256]}"
-            if signature not in self.source_signatures and len(self.source_signatures) >= self.max_nodes:
+            if (
+                signature not in self.source_signatures
+                and len(self.source_signatures) >= self.max_nodes
+            ):
                 self._limit("source_signature_limit")
                 return value
             self.source_signatures[signature] = 1
             previous = self.marks(value)
             if previous:
                 signatures = {
-                    f"{self.sources[m.source_id]['type']}|{self.sources[m.source_id]['name']}" for m in previous
+                    f"{self.sources[m.source_id]['type']}|{self.sources[m.source_id]['name']}"
+                    for m in previous
                 }
                 if signature in signatures:
                     return value
                 self.ambiguous.add(id(value))
-                self.ambiguous_sources.update(mark.source_id for mark in previous)
+                self.ambiguous_sources.update(
+                    mark.source_id for mark in previous
+                )
                 # Keep the budgeted strong reference until request teardown;
                 # an ambiguous object's id must not be reused by another value.
                 self.pending[:] = [
                     event
                     for event in self.pending
-                    if not any(source["id"] in self.ambiguous_sources for source in event["sources"])
+                    if not any(
+                        source["id"] in self.ambiguous_sources
+                        for source in event["sources"]
+                    )
                 ]
                 self.gap("source_identity_ambiguous")
                 return value
@@ -349,11 +394,20 @@ class SecurityState:
             for mark in marks:
                 if mark.source_id in self.ambiguous_sources:
                     continue
-                if len(result) >= self.max_marks or len(self.nodes) >= self.max_nodes:
+                if (
+                    len(result) >= self.max_marks
+                    or len(self.nodes) >= self.max_nodes
+                ):
                     self._limit("propagation_node_limit")
                     break
                 left = max(mark.start, start)
-                right = mark.end if end is None else end if mark.end is None else min(end, mark.end)
+                right = (
+                    mark.end
+                    if end is None
+                    else end
+                    if mark.end is None
+                    else min(end, mark.end)
+                )
                 if exact and right is not None and left >= right:
                     continue
                 node = len(self.nodes) + 1
@@ -379,7 +433,9 @@ class SecurityState:
     def propagate(self, result, inputs, operation, location="", exact=False):
         marks = tuple(m for value in inputs for m in self.marks(value))
         if marks:
-            self.put(result, self.derive(marks, operation, location, exact=exact))
+            self.put(
+                result, self.derive(marks, operation, location, exact=exact)
+            )
         return result
 
     def sink(
@@ -409,10 +465,18 @@ class SecurityState:
                 for mark in (self.marks(value) if marks is None else marks)
                 if mark.source_id not in self.ambiguous_sources
             )
-            if not marks or not config.flag(f"beacon.security.rules.{rule}.enabled"):
+            if not marks or not config.flag(
+                f"beacon.security.rules.{rule}.enabled"
+            ):
                 return None
-            sources = {m.source_id: self.sources[m.source_id] for m in marks if m.source_id in self.sources}
-            source_signature = sorted(f"{s['type']}|{s['name']}" for s in sources.values())
+            sources = {
+                m.source_id: self.sources[m.source_id]
+                for m in marks
+                if m.source_id in self.sources
+            }
+            source_signature = sorted(
+                f"{s['type']}|{s['name']}" for s in sources.values()
+            )
             sink = sink_fields(rule, role, function[:256], location[:1024])
             fingerprint = finding_fingerprint(
                 self.identity["application_id"],
@@ -425,14 +489,22 @@ class SecurityState:
             attack = (
                 attack_evidence.evidence("unknown", "analysis_budget")
                 if self.truncated
-                else attack_evidence.analyze(rule, sink["role"], value, marks, shell_dialect)
+                else attack_evidence.analyze(
+                    rule, sink["role"], value, marks, shell_dialect
+                )
             )
             previous = next(
-                (event for event in self.pending if event["finding_id"] == key),
+                (
+                    event
+                    for event in self.pending
+                    if event["finding_id"] == key
+                ),
                 None,
             )
             if key in self.seen and (
-                previous is None or attack_evidence.rank({"attack_evidence": attack}) <= attack_evidence.rank(previous)
+                previous is None
+                or attack_evidence.rank({"attack_evidence": attack})
+                <= attack_evidence.rank(previous)
             ):
                 return None
             if previous is None and len(self.pending) >= self.max_findings:
@@ -461,17 +533,22 @@ class SecurityState:
                     "schema_version": 1,
                     "source": "beacon_security",
                     "event_name": "beacon.security.finding",
-                    "occurrence_id": previous["occurrence_id"] if previous else "ev-" + str(uuid.uuid4()),
+                    "occurrence_id": previous["occurrence_id"]
+                    if previous
+                    else "ev-" + str(uuid.uuid4()),
                     "attack_evidence": attack,
                     "finding_id": fingerprint,
                     "fingerprint_version": 1,
                     "rule": rule,
                     "assessment": "candidate_risk"
-                    if rule in ("sql_injection", "command_injection") or role in ("executable", "destination_address")
+                    if rule in ("sql_injection", "command_injection")
+                    or role in ("executable", "destination_address")
                     else "observation",
                     "validation": "unvalidated",
                     "severity": "unassigned",
-                    "confidence": "modeled_flow" if exact else "conservative_flow",
+                    "confidence": "modeled_flow"
+                    if exact
+                    else "conservative_flow",
                     "observed_at": stamp(),
                     "execution_observation": "invocation_attempt",
                     "precision": "exact" if exact else "conservative",
@@ -479,7 +556,8 @@ class SecurityState:
                     "server_span_id": self.server_span_id,
                     "trace_flags": self.trace_flags,
                     "current_span_id": format(context.span_id, "016x")
-                    if context.is_valid and format(context.trace_id, "032x") == self.trace_id
+                    if context.is_valid
+                    and format(context.trace_id, "032x") == self.trace_id
                     else "",
                     "sources": list(sources.values()),
                     "propagation": list(graph.values()),

@@ -31,7 +31,11 @@ _REQUEST_FIELDS = (
 
 
 def _now() -> str:
-    return _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    return (
+        _dt.datetime.now(_dt.timezone.utc)
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z")
+    )
 
 
 def _now_millis() -> int:
@@ -144,16 +148,22 @@ class RuntimeLedger:
     """
 
     def __init__(self, identity: dict, profile: str, output: Path):
-        self.identity = _copy(identity) if isinstance(identity, Mapping) else {}
+        self.identity = (
+            _copy(identity) if isinstance(identity, Mapping) else {}
+        )
         self.profile = str(profile or "")
         self.output = Path(output).expanduser().absolute()
         configured_control = config.text("beacon.security.control.file", "")
         self.control = (
-            Path(configured_control).expanduser().absolute() if configured_control else self.output / "control.json"
+            Path(configured_control).expanduser().absolute()
+            if configured_control
+            else self.output / "control.json"
         )
 
         self._lock = threading.RLock()
-        self._local_output_enabled = config.flag("beacon.security.local-output.enabled", False)
+        self._local_output_enabled = config.flag(
+            "beacon.security.local-output.enabled", False
+        )
         self._snapshot_lock = threading.Lock()
         self._shutdown_uncertainty = deque(maxlen=1)
         self._findings: OrderedDict[str, dict[str, Any]] = OrderedDict()
@@ -166,13 +176,23 @@ class RuntimeLedger:
 
         self._max_findings = config.limit("beacon.security.findings.max", 4096)
         self._max_runs = config.limit("beacon.security.runs.max", 256)
-        self._max_run_counter_bytes = config.limit("beacon.security.runs.max.bytes", 8 * 1024 * 1024)
+        self._max_run_counter_bytes = config.limit(
+            "beacon.security.runs.max.bytes", 8 * 1024 * 1024
+        )
         self._run_counter_bytes = 0
         self._shared_run_counters: set[int] = set()
-        self._sample_millis = config.limit("beacon.security.findings.sample.seconds", 300) * 1000
-        self._max_finding_bytes = config.limit("beacon.security.findings.max.bytes", 32 * 1024 * 1024)
-        self._max_active = config.limit("beacon.security.max.active.requests", 256)
-        self._requests_per_second = config.limit("beacon.security.requests-per-second", 1000)
+        self._sample_millis = (
+            config.limit("beacon.security.findings.sample.seconds", 300) * 1000
+        )
+        self._max_finding_bytes = config.limit(
+            "beacon.security.findings.max.bytes", 32 * 1024 * 1024
+        )
+        self._max_active = config.limit(
+            "beacon.security.max.active.requests", 256
+        )
+        self._requests_per_second = config.limit(
+            "beacon.security.requests-per-second", 1000
+        )
 
         self._pause_generation = 0
         self._control_error = ""
@@ -256,7 +276,8 @@ class RuntimeLedger:
                     {
                         key: value
                         for key, value in event.items()
-                        if key not in {"dependencies", "part_index", "part_count"}
+                        if key
+                        not in {"dependencies", "part_index", "part_count"}
                     }
                 )
             )
@@ -267,7 +288,9 @@ class RuntimeLedger:
 
         with self._lock:
             self._active += 1
-            self._counts["requests_started"] = self._counts.get("requests_started", 0) + 1
+            self._counts["requests_started"] = (
+                self._counts.get("requests_started", 0) + 1
+            )
 
             second = int(time.monotonic())
             if second != self._request_second:
@@ -275,7 +298,8 @@ class RuntimeLedger:
                 self._requests_this_second = 0
             self._requests_this_second += 1
             request_budget = (
-                self._active <= self._max_active and self._requests_this_second <= self._requests_per_second
+                self._active <= self._max_active
+                and self._requests_this_second <= self._requests_per_second
             )
 
             generation = self._pause_generation
@@ -286,7 +310,9 @@ class RuntimeLedger:
 
             configured, configuration_status = self._coverage_configuration()
             paused = bool(self._policy.get("paused"))
-            state.collection_enabled = bool(configured and not paused and request_budget)
+            state.collection_enabled = bool(
+                configured and not paused and request_budget
+            )
             if not configured:
                 state.collection_status = configuration_status
             elif paused:
@@ -297,7 +323,9 @@ class RuntimeLedger:
                 state.collection_status = "enabled"
 
             run = self._policy.get("run")
-            if isinstance(run, Mapping) and _valid_until(run.get("expires_at")):
+            if isinstance(run, Mapping) and _valid_until(
+                run.get("expires_at")
+            ):
                 state.run = _copy(dict(run))
                 run_id = str(_mapping(state.run).get("run_id", ""))
                 record = self._runs.get(run_id)
@@ -316,7 +344,9 @@ class RuntimeLedger:
             self._increment_count("requests_completed", 1)
 
             source_signatures = self._state_mapping(state, "source_signatures")
-            risk_source_signatures = self._state_mapping(state, "risk_source_signatures")
+            risk_source_signatures = self._state_mapping(
+                state, "risk_source_signatures"
+            )
             sink_counts = self._state_mapping(state, "sink_counts")
             pending = self._state_pending(state)
             request = _safe_request(getattr(state, "request", {}))
@@ -324,26 +354,44 @@ class RuntimeLedger:
 
             source_count = _number(getattr(state, "source_count", 0))
             if source_count <= 0:
-                source_count = sum(max(0, _number(value)) for value in source_signatures.values())
+                source_count = sum(
+                    max(0, _number(value))
+                    for value in source_signatures.values()
+                )
             if source_count:
                 self._increment_count("sources", source_count)
                 self._increment_count("requests_with_sources", 1)
             if any(_number(value) > 0 for value in sink_counts.values()):
                 self._increment_count("requests_with_sinks", 1)
             for rule, amount in sink_counts.items():
-                self._increment_count("sink." + str(rule), max(0, _number(amount)))
+                self._increment_count(
+                    "sink." + str(rule), max(0, _number(amount))
+                )
             if not bool(getattr(state, "collection_enabled", True)):
-                self._increment_count("requests_" + str(getattr(state, "collection_status", "unknown")))
+                self._increment_count(
+                    "requests_"
+                    + str(getattr(state, "collection_status", "unknown"))
+                )
 
-            generation = getattr(state, "collection_generation", self._pause_generation)
-            collection_enabled = bool(getattr(state, "collection_enabled", True))
+            generation = getattr(
+                state, "collection_generation", self._pause_generation
+            )
+            collection_enabled = bool(
+                getattr(state, "collection_enabled", True)
+            )
             if collection_enabled and generation != self._pause_generation:
                 self._call_gap(state, "collection_paused_during_request")
             gaps = self._state_gaps(state)
             incomplete = bool(
                 getattr(state, "truncated", False)
                 or gaps
-                or (collection_enabled and (not self.enabled() or generation != self._pause_generation))
+                or (
+                    collection_enabled
+                    and (
+                        not self.enabled()
+                        or generation != self._pause_generation
+                    )
+                )
             )
             if incomplete:
                 self._increment_count("requests_incomplete", 1)
@@ -355,17 +403,32 @@ class RuntimeLedger:
                     continue
                 finding_id = original.get("finding_id")
                 finding_key = str(finding_id) if finding_id else ""
-                finding = self._findings.get(finding_key) if finding_key else None
-                previous_sample = _number(finding.get("last_sample_millis")) if finding else 0
+                finding = (
+                    self._findings.get(finding_key) if finding_key else None
+                )
+                previous_sample = (
+                    _number(finding.get("last_sample_millis"))
+                    if finding
+                    else 0
+                )
                 run_id = str(run_state.get("run_id", ""))
-                strongest = int(finding.get("strongest_evidence_rank", -1)) if finding else -1
+                strongest = (
+                    int(finding.get("strongest_evidence_rank", -1))
+                    if finding
+                    else -1
+                )
                 rank = attack_evidence.rank(original)
                 upgrade = rank > strongest
                 sample = (
                     upgrade
                     or finding is None
                     or now_millis - previous_sample >= self._sample_millis
-                    or run_id != (str(finding.get("sample_run_id", "")) if finding else "")
+                    or run_id
+                    != (
+                        str(finding.get("sample_run_id", ""))
+                        if finding
+                        else ""
+                    )
                 )
                 event = self._enrich_event(
                     original,
@@ -425,17 +488,26 @@ class RuntimeLedger:
                     finding["request"] = _copy(event.get("request", request))
                     finding["component"] = _copy(event.get("component"))
                 triage = self._triage(finding_key)
-                if self._local_output_enabled or triage.get("decision") != "unreviewed":
+                if (
+                    self._local_output_enabled
+                    or triage.get("decision") != "unreviewed"
+                ):
                     finding["triage"] = triage
                     event["triage"] = _copy(triage)
                 event["evidence_sampled"] = sample
                 event["evidence_sample_reason"] = (
-                    "evidence_upgrade" if upgrade else "interval_or_run" if sample else "interval"
+                    "evidence_upgrade"
+                    if upgrade
+                    else "interval_or_run"
+                    if sample
+                    else "interval"
                 )
                 if upgrade:
                     finding["strongest_evidence_rank"] = rank
                     if self._local_output_enabled:
-                        finding["strongest_attack_evidence"] = _copy(event.get("attack_evidence"))
+                        finding["strongest_attack_evidence"] = _copy(
+                            event.get("attack_evidence")
+                        )
                         finding["assessment"] = event.get("assessment")
                 if sample:
                     finding["last_sample_millis"] = now_millis
@@ -443,24 +515,39 @@ class RuntimeLedger:
                     if self._local_output_enabled and rank >= strongest:
                         representative = _copy(event)
                         estimate = _estimate(representative)
-                        previous_bytes = _number(finding.get("representative_bytes"))
+                        previous_bytes = _number(
+                            finding.get("representative_bytes")
+                        )
                         if (
-                            estimate > config.limit("beacon.security.evidence.max.bytes", 65536)
-                            or self._finding_bytes - previous_bytes + estimate > self._max_finding_bytes
+                            estimate
+                            > config.limit(
+                                "beacon.security.evidence.max.bytes", 65536
+                            )
+                            or self._finding_bytes - previous_bytes + estimate
+                            > self._max_finding_bytes
                         ):
                             self._omit_evidence(representative)
-                            representative["truncation_reason"] = "finding_snapshot_byte_budget"
+                            representative["truncation_reason"] = (
+                                "finding_snapshot_byte_budget"
+                            )
                             estimate = _estimate(representative)
-                            self._increment_count("finding_sample_truncated", 1)
+                            self._increment_count(
+                                "finding_sample_truncated", 1
+                            )
 
-                        if self._finding_bytes - previous_bytes + estimate <= self._max_finding_bytes:
+                        if (
+                            self._finding_bytes - previous_bytes + estimate
+                            <= self._max_finding_bytes
+                        ):
                             self._finding_bytes += estimate - previous_bytes
                             finding["representative_bytes"] = estimate
                             finding["representative"] = representative
                         else:
                             self._increment_count("finding_sample_dropped", 1)
                 else:
-                    self._increment_count("representative_samples_suppressed", 1)
+                    self._increment_count(
+                        "representative_samples_suppressed", 1
+                    )
                     self._omit_evidence(event)
                 result.append(event)
                 if self._local_output_enabled:
@@ -490,7 +577,9 @@ class RuntimeLedger:
         # A forced flush may overlap the monitor. Keep file revisions ordered
         # without holding the lock used by request bookkeeping.
         acquired = (
-            self._snapshot_lock.acquire(timeout=max(0.0, deadline - time.monotonic()))
+            self._snapshot_lock.acquire(
+                timeout=max(0.0, deadline - time.monotonic())
+            )
             if force and deadline is not None
             else self._snapshot_lock.acquire(blocking=force)
         )
@@ -521,7 +610,9 @@ class RuntimeLedger:
             self._snapshot_at = now_monotonic
             self._last_delivery = _copy(dict(delivery or {}))
 
-        local_output_enabled = config.flag("beacon.security.local-output.enabled", False)
+        local_output_enabled = config.flag(
+            "beacon.security.local-output.enabled", False
+        )
         if not local_output_enabled:
             return
         if local_output_enabled:
@@ -529,7 +620,9 @@ class RuntimeLedger:
         with self._lock:
             self._apply_shutdown_uncertainty()
             for run in self._runs.values():
-                if run.get("status") == "active" and not _valid_until(run.get("expires_at")):
+                if run.get("status") == "active" and not _valid_until(
+                    run.get("expires_at")
+                ):
                     run["status"] = "draining"
                     run["expired"] = True
                     self._runs_revision += 1
@@ -544,14 +637,18 @@ class RuntimeLedger:
 
             findings_revision = self._findings_revision
             runs_revision = self._runs_revision
-            findings_changed = findings_revision != self._written_revisions["findings"]
+            findings_changed = (
+                findings_revision != self._written_revisions["findings"]
+            )
             runs_changed = runs_revision != self._written_revisions["runs"]
             finding_snapshot: list[dict] = []
             for finding in self._findings.values() if findings_changed else ():
                 # Representatives and nested metadata are owned by the ledger
                 # and replaced, never edited. Freeze just the mutable outer row.
                 copied = dict(finding)
-                copied["attack_evidence_counts"] = dict(finding["attack_evidence_counts"])
+                copied["attack_evidence_counts"] = dict(
+                    finding["attack_evidence_counts"]
+                )
                 for field in (
                     "dirty",
                     "last_sample_millis",
@@ -590,7 +687,9 @@ class RuntimeLedger:
                 with self._lock:
                     self._written_revisions["findings"] = findings_revision
             if runs_changed:
-                self._write_snapshot("runs.json", self._envelope("runs", run_snapshot))
+                self._write_snapshot(
+                    "runs.json", self._envelope("runs", run_snapshot)
+                )
                 with self._lock:
                     self._written_revisions["runs"] = runs_revision
             self._write_snapshot("health.json", self.health(delivery_copy))
@@ -610,7 +709,8 @@ class RuntimeLedger:
             effective = configured and not paused
             delivery_loss = max(
                 self._delivery_loss(delivery),
-                self._counts.get("delivery_loss", 0) + self._counts.get("delivery_failure", 0),
+                self._counts.get("delivery_loss", 0)
+                + self._counts.get("delivery_failure", 0),
             )
             if not configured:
                 status = configuration_status
@@ -645,7 +745,9 @@ class RuntimeLedger:
                 "status": status,
                 "configured": configured,
                 "effective": effective,
-                "collection_status": ("paused" if configured and paused else configuration_status),
+                "collection_status": (
+                    "paused" if configured and paused else configuration_status
+                ),
                 "active_requests": self._active,
                 "counts": dict(self._counts),
                 "rule_status": self._rule_status(),
@@ -706,7 +808,9 @@ class RuntimeLedger:
             return False, "unconfigured"
 
     @staticmethod
-    def _increment_record(record: dict[str, Any], name: str, amount: int = 1) -> None:
+    def _increment_record(
+        record: dict[str, Any], name: str, amount: int = 1
+    ) -> None:
         record[name] = _number(record.get(name)) + _number(amount)
 
     @staticmethod
@@ -787,7 +891,9 @@ class RuntimeLedger:
         if event.get("trace_id") in (None, ""):
             event["trace_id"] = str(getattr(state, "trace_id", "") or "")
         if event.get("server_span_id") in (None, ""):
-            event["server_span_id"] = str(getattr(state, "server_span_id", "") or "")
+            event["server_span_id"] = str(
+                getattr(state, "server_span_id", "") or ""
+            )
         if incomplete:
             event["coverage_gaps"] = list(gaps)
             event["collection_complete"] = False
@@ -819,12 +925,16 @@ class RuntimeLedger:
         self._increment_record(run, "active_requests", -1)
         self._increment_record(run, "requests", 1)
         source_values = {
-            str(key): max(0, _number(value)) for key, value in source_signatures.items() if _number(value) > 0
+            str(key): max(0, _number(value))
+            for key, value in source_signatures.items()
+            if _number(value) > 0
         }
         if source_values:
             self._increment_record(run, "source_requests", 1)
         for signature, amount in source_values.items():
-            self._bounded_increment(run, "source_signatures", signature, amount)
+            self._bounded_increment(
+                run, "source_signatures", signature, amount
+            )
 
         rule = str(run.get("rule", ""))
         if _number(sink_counts.get(rule, 0)) > 0:
@@ -838,7 +948,10 @@ class RuntimeLedger:
         observed = 0
         event_source_counts: dict[str, int] = {}
         for event in pending:
-            if not isinstance(event, Mapping) or str(event.get("rule", "")) != rule:
+            if (
+                not isinstance(event, Mapping)
+                or str(event.get("rule", "")) != rule
+            ):
                 continue
             if not event.get("finding_id"):
                 continue
@@ -852,7 +965,9 @@ class RuntimeLedger:
                     source_name = source.get("name")
                     if source_type is not None and source_name is not None:
                         signature = f"{source_type}|{source_name}"
-                        event_source_counts[signature] = event_source_counts.get(signature, 0) + 1
+                        event_source_counts[signature] = (
+                            event_source_counts.get(signature, 0) + 1
+                        )
             finding_id = str(event.get("finding_id"))
             self._bounded_increment(run, "finding_counts", finding_id, 1)
         if observed:
@@ -866,10 +981,14 @@ class RuntimeLedger:
             risk_values = event_source_counts
         else:
             risk_values = {
-                str(key): max(0, _number(value)) for key, value in risk_source_signatures.items() if _number(value) > 0
+                str(key): max(0, _number(value))
+                for key, value in risk_source_signatures.items()
+                if _number(value) > 0
             }
         for signature, amount in risk_values.items():
-            self._bounded_increment(run, "risk_source_signatures", signature, amount)
+            self._bounded_increment(
+                run, "risk_source_signatures", signature, amount
+            )
 
         if self.profile != str(run.get("instrumentation_profile", "")):
             self._increment_record(run, "incomplete_requests", 1)
@@ -886,7 +1005,10 @@ class RuntimeLedger:
         values = run.setdefault(field, {})
         if key not in values:
             size = 128 + sys.getsizeof(key)
-            if len(values) >= self._max_findings or self._run_counter_bytes + size > self._max_run_counter_bytes:
+            if (
+                len(values) >= self._max_findings
+                or self._run_counter_bytes + size > self._max_run_counter_bytes
+            ):
                 self._increment_record(run, "incomplete_requests", 1)
                 self._increment_count("run_counter_capacity_dropped")
                 return
@@ -900,7 +1022,10 @@ class RuntimeLedger:
         values[key] = _number(values.get(key)) + max(0, amount)
 
     def _finish_if_idle(self, run: dict[str, Any]) -> None:
-        if run.get("status") != "draining" or _number(run.get("active_requests")) != 0:
+        if (
+            run.get("status") != "draining"
+            or _number(run.get("active_requests")) != 0
+        ):
             return
         run["delivery_loss"] = max(
             _number(run.get("delivery_loss")),
@@ -909,7 +1034,8 @@ class RuntimeLedger:
         )
         run["snapshot_failures"] = max(
             0,
-            self._snapshot_failures - _number(run.get("snapshot_failures_start")),
+            self._snapshot_failures
+            - _number(run.get("snapshot_failures_start")),
         )
         run["status"] = "closed"
         run["ended_at"] = _now()
@@ -918,7 +1044,8 @@ class RuntimeLedger:
     def _loss_total(self) -> int:
         value = max(
             self._delivery_loss(self._last_delivery),
-            self._counts.get("delivery_loss", 0) + self._counts.get("delivery_failure", 0),
+            self._counts.get("delivery_loss", 0)
+            + self._counts.get("delivery_failure", 0),
         )
         return (
             value
@@ -942,7 +1069,10 @@ class RuntimeLedger:
                 _number(amount)
                 for name, amount in counters.items()
                 if str(name).startswith("beacon.security.")
-                and (str(name).endswith("failed") or str(name).endswith("record_truncated"))
+                and (
+                    str(name).endswith("failed")
+                    or str(name).endswith("record_truncated")
+                )
             )
         return value
 
@@ -964,7 +1094,9 @@ class RuntimeLedger:
             with self._lock:
                 if attempted_revision == self._applied_revision:
                     return
-            if "paused" in next_policy and not isinstance(next_policy.get("paused"), bool):
+            if "paused" in next_policy and not isinstance(
+                next_policy.get("paused"), bool
+            ):
                 raise ValueError("invalid_pause")
             self._validate_exceptions(next_policy.get("exceptions"))
             raw_run = next_policy.get("run", _MISSING)
@@ -972,32 +1104,48 @@ class RuntimeLedger:
                 self._validate_run(raw_run)
 
             with self._lock:
-                new_run = dict(raw_run) if isinstance(raw_run, Mapping) else None
+                new_run = (
+                    dict(raw_run) if isinstance(raw_run, Mapping) else None
+                )
                 next_id = str(new_run.get("run_id")) if new_run else ""
                 if new_run is not None:
                     existing = self._runs.get(next_id)
-                    if existing is not None and existing.get("status") != "active":
+                    if (
+                        existing is not None
+                        and existing.get("status") != "active"
+                    ):
                         raise ValueError("run_id_already_closed")
                     if existing is None and len(self._runs) >= self._max_runs:
                         raise ValueError("run_capacity_restart_or_archive")
 
                 for old in self._runs.values():
-                    if old.get("status") == "active" and str(old.get("run_id")) != next_id:
+                    if (
+                        old.get("status") == "active"
+                        and str(old.get("run_id")) != next_id
+                    ):
                         old["status"] = "draining"
                         self._finish_if_idle(old)
 
                 if new_run is not None and next_id not in self._runs:
                     paused = bool(next_policy.get("paused"))
-                    configured, configuration_status = self._coverage_configuration()
+                    configured, configuration_status = (
+                        self._coverage_configuration()
+                    )
                     run = _copy(new_run)
                     run.update(
                         {
                             "status": "active",
                             "started_at": _now(),
                             "identity": _copy(self.identity),
-                            "rule_enabled": self._rule_status().get(run.get("rule"), False),
+                            "rule_enabled": self._rule_status().get(
+                                run.get("rule"), False
+                            ),
                             "collection_enabled": configured and not paused,
-                            "collection_status": ("paused" if configured and paused else configuration_status),
+                            "collection_status": (
+                                "paused"
+                                if configured and paused
+                                else configuration_status
+                            ),
                             "loss_start": self._loss_total(),
                             "snapshot_failures_start": self._snapshot_failures,
                             "instrumentation_profile": self.profile,
@@ -1051,7 +1199,11 @@ class RuntimeLedger:
             if not _non_empty_text(conditions.get(field)):
                 raise ValueError("missing_condition_" + field)
         expected = conditions.get("expected_requests")
-        if isinstance(expected, bool) or not isinstance(expected, (int, float)) or expected <= 0:
+        if (
+            isinstance(expected, bool)
+            or not isinstance(expected, (int, float))
+            or expected <= 0
+        ):
             raise ValueError("expected_requests_required")
 
     @staticmethod
@@ -1085,13 +1237,18 @@ class RuntimeLedger:
                 if not isinstance(item, Mapping):
                     continue
                 scope = _mapping(item.get("scope"))
-                if finding_id == scope.get("finding_id") and _valid_until(item.get("expires_at")):
+                if finding_id == scope.get("finding_id") and _valid_until(
+                    item.get("expires_at")
+                ):
                     return _copy(dict(item))
         return {"decision": "unreviewed"}
 
     @staticmethod
     def _rule_status() -> dict[str, bool]:
-        return {rule: config.flag(f"beacon.security.rules.{rule}.enabled", True) for rule in config.RULES}
+        return {
+            rule: config.flag(f"beacon.security.rules.{rule}.enabled", True)
+            for rule in config.RULES
+        }
 
     def _envelope(self, key: str, values: list[dict]) -> dict[str, Any]:
         return {
@@ -1105,7 +1262,9 @@ class RuntimeLedger:
     def _write_snapshot(self, name: str, value: Mapping[str, Any]) -> None:
         self.output.mkdir(parents=True, exist_ok=True)
         destination = self.output / name
-        fd, temporary_name = tempfile.mkstemp(prefix=".security-", suffix=".json", dir=str(self.output))
+        fd, temporary_name = tempfile.mkstemp(
+            prefix=".security-", suffix=".json", dir=str(self.output)
+        )
         try:
             with os.fdopen(fd, "wb") as stream:
                 encoded = json.dumps(

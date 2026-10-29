@@ -31,7 +31,11 @@ def sink_fields(rule, role, function, location):
     }
     if rule == "http_request_input":
         sink["input_part"] = (
-            "path" if role == "request_path" else "query" if role == "request_query" else "path_or_query"
+            "path"
+            if role == "request_path"
+            else "query"
+            if role == "request_query"
+            else "path_or_query"
         )
     if rule == "path_traversal":
         sink["role"] = "file_path"
@@ -45,9 +49,13 @@ def sink_fields(rule, role, function, location):
             operation = "delete"
         elif role in ("read", "write", "delete", "rename"):
             operation = role
-        elif role == "source" or re.search(r"inputstream|reader|directorystream|\.read", name):
+        elif role == "source" or re.search(
+            r"inputstream|reader|directorystream|\.read", name
+        ):
             operation = "read"
-        elif role == "target" or re.search(r"outputstream|writer|\.write", name):
+        elif role == "target" or re.search(
+            r"outputstream|writer|\.write", name
+        ):
             operation = "write"
         sink["operation"] = operation
         sink["path_role"] = "unknown"
@@ -72,7 +80,9 @@ def _normalize_surrogates(value):
             if index + 1 < len(text):
                 low = ord(text[index + 1])
                 if 0xDC00 <= low <= 0xDFFF:
-                    result.append(chr(0x10000 + ((code - 0xD800) << 10) + low - 0xDC00))
+                    result.append(
+                        chr(0x10000 + ((code - 0xD800) << 10) + low - 0xDC00)
+                    )
                     index += 2
                     continue
             result.append("\ufffd")
@@ -116,14 +126,24 @@ def finding_fingerprint(application_id, language, rule, sink, signatures):
 
 def trace_id(value, length):
     text = str(value or "").lower()
-    return text if len(text) == length and re.fullmatch("[0-9a-f]+", text) and set(text) != {"0"} else ""
+    return (
+        text
+        if len(text) == length
+        and re.fullmatch("[0-9a-f]+", text)
+        and set(text) != {"0"}
+        else ""
+    )
 
 
 def component_reference(value=None):
     value = value or {}
     if value.get("name") is None:
         return {}
-    return {key: value[key] for key in ("name", "version", "hash") if value.get(key) is not None}
+    return {
+        key: value[key]
+        for key in ("name", "version", "hash")
+        if value.get(key) is not None
+    }
 
 
 def request_fields(value=None):
@@ -172,17 +192,35 @@ def event_record(original, identity=None):
             event[field] = source[field]
     event["schema_version"] = SCHEMA_VERSION
     name = event.get("event_name")
-    event["source"] = "beacon_security_sbom" if name == "beacon.security.sbom.inventory" else "beacon_security"
+    event["source"] = (
+        "beacon_security_sbom"
+        if name == "beacon.security.sbom.inventory"
+        else "beacon_security"
+    )
     event.setdefault(
         "observed_at",
-        dt.datetime.now(dt.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+        dt.datetime.now(dt.timezone.utc)
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z"),
     )
     if event.get("event_name") == "beacon.security.finding":
         event["request"] = request_fields(event.get("request"))
         event["trace_id"] = trace_id(event.get("trace_id"), 32)
-        event["server_span_id"] = trace_id(event.get("server_span_id"), 16) if event["trace_id"] else ""
-        event["current_span_id"] = trace_id(event.get("current_span_id"), 16) if event["trace_id"] else ""
-        event["trace_flags"] = int(event.get("trace_flags") or 0) & 0xFF if event["server_span_id"] else 0
+        event["server_span_id"] = (
+            trace_id(event.get("server_span_id"), 16)
+            if event["trace_id"]
+            else ""
+        )
+        event["current_span_id"] = (
+            trace_id(event.get("current_span_id"), 16)
+            if event["trace_id"]
+            else ""
+        )
+        event["trace_flags"] = (
+            int(event.get("trace_flags") or 0) & 0xFF
+            if event["server_span_id"]
+            else 0
+        )
         event["trace_availability"] = "not_guaranteed_by_trace_id"
     if event.get("event_name") == "beacon.security.finding":
         event["component"] = component_reference(event.get("component"))

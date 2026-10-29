@@ -24,10 +24,14 @@ from urllib.parse import quote, unquote, urlparse
 
 try:
     from packaging.utils import canonicalize_name
-except ImportError:  # pragma: no cover - packaging is a declared runtime dependency.
+except (
+    ImportError
+):  # pragma: no cover - packaging is a declared runtime dependency.
 
     def canonicalize_name(value: str) -> str:
-        return "-".join(str(value).lower().replace("_", "-").replace(".", "-").split())
+        return "-".join(
+            str(value).lower().replace("_", "-").replace(".", "-").split()
+        )
 
 
 from . import config
@@ -67,16 +71,24 @@ def _setting_int(key: str, default: int) -> int:
 
 def _iso_now() -> str:
     value = time.time()
-    return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(value)) + ".%03dZ" % int((value - int(value)) * 1000)
+    return time.strftime(
+        "%Y-%m-%dT%H:%M:%S", time.gmtime(value)
+    ) + ".%03dZ" % int((value - int(value)) * 1000)
 
 
 def _sha256(value: str | bytes) -> str:
-    data = value.encode("utf-8", "surrogatepass") if isinstance(value, str) else value
+    data = (
+        value.encode("utf-8", "surrogatepass")
+        if isinstance(value, str)
+        else value
+    )
     return hashlib.sha256(data).hexdigest()
 
 
 def _canonical_json(value: Any) -> bytes:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8", "surrogatepass")
+    return json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8", "surrogatepass")
 
 
 def _canonical_distribution_name(value: Any) -> str:
@@ -91,7 +103,10 @@ def _canonical_distribution_name(value: Any) -> str:
 
 def _is_infrastructure_distribution(name: str) -> bool:
     normalized = _canonical_distribution_name(name)
-    return any(normalized == prefix or normalized.startswith(prefix + "-") for prefix in _INFRASTRUCTURE_PREFIXES)
+    return any(
+        normalized == prefix or normalized.startswith(prefix + "-")
+        for prefix in _INFRASTRUCTURE_PREFIXES
+    )
 
 
 def _pypi_purl(name: str, version: str) -> str:
@@ -101,10 +116,15 @@ def _pypi_purl(name: str, version: str) -> str:
     # PEP 503 names use a conservative ASCII alphabet.  Metadata names with
     # unusual characters are retained in the component but do not get a false
     # PURL.
-    if any(char not in "abcdefghijklmnopqrstuvwxyz0123456789-._" for char in normalized):
+    if any(
+        char not in "abcdefghijklmnopqrstuvwxyz0123456789-._"
+        for char in normalized
+    ):
         return ""
     result = "pkg:pypi/" + normalized
-    return result + ("@" + quote(_bounded(version, 256), safe="-._~") if version else "")
+    return result + (
+        "@" + quote(_bounded(version, 256), safe="-._~") if version else ""
+    )
 
 
 def _path_from_value(value: Any) -> Path | None:
@@ -146,7 +166,10 @@ def _archive_path(value: Any) -> Path | None:
         candidates.append(direct)
     for candidate in candidates:
         try:
-            if candidate.suffix.lower() in _ARCHIVE_SUFFIXES and candidate.is_file():
+            if (
+                candidate.suffix.lower() in _ARCHIVE_SUFFIXES
+                and candidate.is_file()
+            ):
                 return Path(os.path.realpath(candidate))
         except OSError:
             continue
@@ -163,7 +186,9 @@ def _normalize_origin(value: Any) -> str | None:
         marker = str(archive).replace("\\", "/")
         index = lower.find(marker.lower())
         if index >= 0:
-            suffix = text[index + len(marker) :].replace("\\", "/").lstrip("/!")
+            suffix = (
+                text[index + len(marker) :].replace("\\", "/").lstrip("/!")
+            )
             return str(archive) + ("!/" + suffix if suffix else "")
         return str(archive)
     path = _path_from_value(text)
@@ -203,7 +228,9 @@ def _outer_origin(origin: str) -> str:
 def _display_origin(origin: str) -> str:
     outer, separator, nested = origin.partition("!/")
     display = Path(outer).name or outer
-    return _bounded(display + (("!/" + nested) if separator else ""), _MAX_TEXT)
+    return _bounded(
+        display + (("!/" + nested) if separator else ""), _MAX_TEXT
+    )
 
 
 def _path_fingerprint(origin: str) -> tuple[Any, ...] | None:
@@ -234,7 +261,11 @@ def _metadata_values(metadata: Any, key: str) -> list[str]:
     result: list[str] = []
     for value in values or []:
         value = _bounded(value, 512).strip()
-        if value and value.lower() not in {"unknown", "none", "n/a"} and value not in result:
+        if (
+            value
+            and value.lower() not in {"unknown", "none", "n/a"}
+            and value not in result
+        ):
             result.append(value)
         if len(result) >= _MAX_LICENSES:
             break
@@ -262,7 +293,9 @@ def _property(properties: list[dict[str, str]], name: str, value: Any) -> None:
     properties.append({"name": name, "value": _bounded(value, _MAX_TEXT)})
 
 
-def _component_ref(name: str, version: str, source: str, scope: str, artifact_hash: str = "") -> str:
+def _component_ref(
+    name: str, version: str, source: str, scope: str, artifact_hash: str = ""
+) -> str:
     if artifact_hash:
         return "urn:beacon:security:component:" + artifact_hash
     return "urn:beacon:security:component:" + _sha256(
@@ -299,7 +332,8 @@ def _included_module(name: str) -> bool:
         try:
             prefixes = config.prefixes
             return any(
-                name == prefix or name.startswith(prefix + ".") for prefix in prefixes("beacon.security.python.include")
+                name == prefix or name.startswith(prefix + ".")
+                for prefix in prefixes("beacon.security.python.include")
             )
         except Exception:
             return False
@@ -347,7 +381,10 @@ class _MetadataSupport:
     """Mixin for bounded distribution discovery and module mapping."""
 
     def _load_metadata(self, now: float) -> _MetadataCache:
-        if self._metadata.loaded_at and now - self._metadata.loaded_at < self.cache_seconds:
+        if (
+            self._metadata.loaded_at
+            and now - self._metadata.loaded_at < self.cache_seconds
+        ):
             self._metadata_failure_reason = ""
             return self._metadata
         try:
@@ -413,9 +450,13 @@ class _MetadataSupport:
                     )
                 )
             package_map: dict[str, list[str]] = defaultdict(list)
-            descriptors_by_name: dict[str, list[_Distribution]] = defaultdict(list)
+            descriptors_by_name: dict[str, list[_Distribution]] = defaultdict(
+                list
+            )
             for descriptor in descriptors:
-                descriptors_by_name[descriptor.normalized_name].append(descriptor)
+                descriptors_by_name[descriptor.normalized_name].append(
+                    descriptor
+                )
             package_entries = 0
             for package, names in (raw_package_map or {}).items():
                 if package_entries >= self.max_entries:
@@ -428,9 +469,14 @@ class _MetadataSupport:
                         break
                     package_entries += 1
                     normalized = _canonical_distribution_name(name)
-                    if normalized and normalized not in package_map[package_name]:
+                    if (
+                        normalized
+                        and normalized not in package_map[package_name]
+                    ):
                         package_map[package_name].append(normalized)
-                        for descriptor in descriptors_by_name.get(normalized, ()):
+                        for descriptor in descriptors_by_name.get(
+                            normalized, ()
+                        ):
                             descriptor.package_names.add(package_name)
             mapping_entries = 0
             for descriptor in descriptors:
@@ -439,11 +485,18 @@ class _MetadataSupport:
                         self._metadata_limit_reason = "metadata_entry_limit"
                         break
                     mapping_entries += 1
-                    if descriptor.normalized_name not in package_map[package_name]:
-                        package_map[package_name].append(descriptor.normalized_name)
+                    if (
+                        descriptor.normalized_name
+                        not in package_map[package_name]
+                    ):
+                        package_map[package_name].append(
+                            descriptor.normalized_name
+                        )
                 if mapping_entries >= self.max_entries:
                     break
-            self._metadata = _MetadataCache(now, descriptors, dict(package_map))
+            self._metadata = _MetadataCache(
+                now, descriptors, dict(package_map)
+            )
             self._metadata_failure_reason = ""
         except Exception:
             self._metadata_failure_reason = "distribution_metadata_unavailable"
@@ -489,7 +542,9 @@ class _MetadataSupport:
         return result
 
     @staticmethod
-    def _direct_url(distribution: Any, root: Path | None) -> tuple[Path | None, bool]:
+    def _direct_url(
+        distribution: Any, root: Path | None
+    ) -> tuple[Path | None, bool]:
         text = None
         try:
             text = distribution.read_text("direct_url.json")
@@ -509,7 +564,9 @@ class _MetadataSupport:
             value = json.loads(text)
             url = _bounded(value.get("url"), 4096)
             source = _path_from_value(url)
-            editable = bool((value.get("dir_info") or {}).get("editable", False))
+            editable = bool(
+                (value.get("dir_info") or {}).get("editable", False)
+            )
             return source, editable
         except Exception:
             return None, False
@@ -609,18 +666,30 @@ class _MetadataSupport:
             reasons.add("artifact_unreadable")
             return ""
         cached = self._archive_cache.get(key)
-        if cached is not None and cached[0] == fingerprint and now - cached[1] < self.cache_seconds:
+        if (
+            cached is not None
+            and cached[0] == fingerprint
+            and now - cached[1] < self.cache_seconds
+        ):
             return cached[2]
-        if fingerprint[2] > self.max_archive_bytes or scan_bytes[0] + fingerprint[2] > self.max_scan_bytes:
+        if (
+            fingerprint[2] > self.max_archive_bytes
+            or scan_bytes[0] + fingerprint[2] > self.max_scan_bytes
+        ):
             reasons.add("artifact_hash_byte_limit")
             return ""
-        if archive.suffix.lower() in _ARCHIVE_SUFFIXES and not self._archive_entries_within_budget(archive, reasons):
+        if (
+            archive.suffix.lower() in _ARCHIVE_SUFFIXES
+            and not self._archive_entries_within_budget(archive, reasons)
+        ):
             return ""
         digest = hashlib.sha256()
         try:
             with archive.open("rb") as stream:
                 while True:
-                    chunk = stream.read(min(1024 * 1024, self.max_archive_bytes + 1))
+                    chunk = stream.read(
+                        min(1024 * 1024, self.max_archive_bytes + 1)
+                    )
                     if not chunk:
                         break
                     scan_bytes[0] += len(chunk)
@@ -635,7 +704,9 @@ class _MetadataSupport:
         self._archive_cache[key] = (fingerprint, now, value)
         return value
 
-    def _archive_entries_within_budget(self, archive: Path, reasons: set[str]) -> bool:
+    def _archive_entries_within_budget(
+        self, archive: Path, reasons: set[str]
+    ) -> bool:
         """Bound archive directory enumeration before accepting its digest."""
 
         try:
@@ -659,7 +730,9 @@ class _MetadataSupport:
         try:
             items = list(sys.modules.items())
         except Exception as error:
-            raise RuntimeError("loaded_module_observation_unavailable") from error
+            raise RuntimeError(
+                "loaded_module_observation_unavailable"
+            ) from error
         for name, module in sorted(items, key=lambda item: str(item[0])):
             name = _bounded(name, 512)
             if not name or module is None:
@@ -667,13 +740,22 @@ class _MetadataSupport:
             try:
                 namespace = _is_namespace_module(module)
                 spec = getattr(module, "__spec__", None)
-                raw_origin = getattr(module, "__file__", None) or getattr(spec, "origin", None)
-                builtin = raw_origin in _UNRESOLVED_ORIGINS and raw_origin not in {"namespace", None}
+                raw_origin = getattr(module, "__file__", None) or getattr(
+                    spec, "origin", None
+                )
+                builtin = (
+                    raw_origin in _UNRESOLVED_ORIGINS
+                    and raw_origin not in {"namespace", None}
+                )
                 origin = _normalize_origin(raw_origin)
                 if origin is not None or namespace or builtin:
-                    result.append(_ModuleObservation(name, origin, namespace, builtin))
+                    result.append(
+                        _ModuleObservation(name, origin, namespace, builtin)
+                    )
             except Exception as error:
-                raise RuntimeError("loaded_module_observation_unavailable") from error
+                raise RuntimeError(
+                    "loaded_module_observation_unavailable"
+                ) from error
         return result
 
     def _resolve_observation(
@@ -687,13 +769,16 @@ class _MetadataSupport:
         app_ref: str,
         replaced_origins: set[str],
         reasons: set[str],
-        distribution_match: tuple[list[_Distribution], list[_Distribution]] | None = None,
+        distribution_match: tuple[list[_Distribution], list[_Distribution]]
+        | None = None,
     ) -> dict[str, Any]:
         result: dict[str, Any] = {
             "status": "unresolved",
             "reason": "unknown_module_origin",
         }
-        if observation.builtin or observation.name.partition(".")[0] in getattr(sys, "stdlib_module_names", set()):
+        if observation.builtin or observation.name.partition(".")[
+            0
+        ] in getattr(sys, "stdlib_module_names", set()):
             if stdlib_ref in records:
                 result.update(
                     {
@@ -721,8 +806,14 @@ class _MetadataSupport:
             return result
 
         if distribution_match is None:
-            candidates = self._candidates(observation.name, package_map, by_name)
-            matches = [item for item in candidates if self._origin_matches(item, origin, observation.name)]
+            candidates = self._candidates(
+                observation.name, package_map, by_name
+            )
+            matches = [
+                item
+                for item in candidates
+                if self._origin_matches(item, origin, observation.name)
+            ]
         else:
             candidates, matches = distribution_match
         infrastructure = [item for item in matches if item.infrastructure]
@@ -752,7 +843,9 @@ class _MetadataSupport:
                 }
             )
             return result
-        if len(matches) > 1 or (candidates and len(matches) == 0 and len(candidates) > 1):
+        if len(matches) > 1 or (
+            candidates and len(matches) == 0 and len(candidates) > 1
+        ):
             reasons.add("ambiguous_module_distribution")
             result["reason"] = (
                 "ambiguous_editable_installation"
@@ -767,7 +860,9 @@ class _MetadataSupport:
             result["source"] = origin
             return result
         if _included_module(observation.name):
-            result.update({"status": "resolved", "bom-ref": app_ref, "source": origin})
+            result.update(
+                {"status": "resolved", "bom-ref": app_ref, "source": origin}
+            )
             return result
         reasons.add("unknown_module_origin")
         result["source"] = origin
@@ -807,7 +902,9 @@ class _MetadataSupport:
             },
             {
                 "name": "beacon:security:sbom:deployed",
-                "value": "unknown" if distribution.editable or distribution.root is None else "true",
+                "value": "unknown"
+                if distribution.editable or distribution.root is None
+                else "true",
             },
             {"name": "beacon:security:sbom:declared", "value": "false"},
             {"name": "beacon:security:sbom:lifecycle", "value": "current"},
@@ -848,11 +945,17 @@ class _MetadataSupport:
         }
         if distribution.version:
             record["version"] = distribution.version
-        purl = _pypi_purl(name, distribution.version) if distribution.normalized_name else ""
+        purl = (
+            _pypi_purl(name, distribution.version)
+            if distribution.normalized_name
+            else ""
+        )
         if purl:
             record["purl"] = purl
         if distribution.artifact_hash:
-            record["hashes"] = [{"alg": "SHA-256", "content": distribution.artifact_hash}]
+            record["hashes"] = [
+                {"alg": "SHA-256", "content": distribution.artifact_hash}
+            ]
         if distribution.licenses:
             record["licenses"] = deepcopy(distribution.licenses)
         return record

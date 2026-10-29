@@ -12,7 +12,9 @@ from beacon_security.ledger import RuntimeLedger
 from beacon_security.state import SecurityState
 from beacon_security.tracking import Mark
 
-CASES = json.loads((Path(__file__).parent / "fixtures/attack-analysis.json").read_text())
+CASES = json.loads(
+    (Path(__file__).parent / "fixtures/attack-analysis.json").read_text()
+)
 IDENTITY = {"application_id": "attack-app", "instance_id": "attack-instance"}
 
 
@@ -27,7 +29,9 @@ def mark(text: str, source: str) -> Mark:
 
 
 @pytest.mark.parametrize("case", CASES["sql"])
-def test_sql_evidence_uses_context_not_keywords(monkeypatch, case: dict) -> None:
+def test_sql_evidence_uses_context_not_keywords(
+    monkeypatch, case: dict
+) -> None:
     monkeypatch.setenv("BEACON_SECURITY_ANALYSIS_SQL_DIALECT", "ansi")
     result = attack_evidence.analyze(
         "sql_injection",
@@ -60,7 +64,10 @@ def test_missing_configuration_imprecision_and_budgets_preserve_uncertainty(
     taint = mark(query, "guest")
     monkeypatch.delenv("BEACON_SECURITY_ANALYSIS_SQL_DIALECT", raising=False)
     assert (
-        attack_evidence.analyze("sql_injection", "sql_template", query, [taint])["reason"] == "sql_dialect_unsupported"
+        attack_evidence.analyze(
+            "sql_injection", "sql_template", query, [taint]
+        )["reason"]
+        == "sql_dialect_unsupported"
     )
     monkeypatch.setenv("BEACON_SECURITY_ANALYSIS_SQL_DIALECT", "ansi")
     for changed in (
@@ -69,9 +76,19 @@ def test_missing_configuration_imprecision_and_budgets_preserve_uncertainty(
         replace(taint, unit="byte"),
         replace(taint, start=-1),
     ):
-        assert attack_evidence.analyze("sql_injection", "sql_template", query, [changed])["reason"] == "taint_imprecise"
+        assert (
+            attack_evidence.analyze(
+                "sql_injection", "sql_template", query, [changed]
+            )["reason"]
+            == "taint_imprecise"
+        )
     for value, marks in (("x" * 8193, [taint]), (query, [taint] * 65)):
-        assert attack_evidence.analyze("sql_injection", "sql_template", value, marks)["reason"] == "analysis_budget"
+        assert (
+            attack_evidence.analyze(
+                "sql_injection", "sql_template", value, marks
+            )["reason"]
+            == "analysis_budget"
+        )
     assert (
         attack_evidence.analyze(
             "command_injection",
@@ -82,15 +99,33 @@ def test_missing_configuration_imprecision_and_budgets_preserve_uncertainty(
         )["reason"]
         == "shell_dialect_unsupported"
     )
-    assert attack_evidence.analyze("sql_injection", "sql_template", b"SELECT 'guest'", [taint])["status"] == "unknown"
+    assert (
+        attack_evidence.analyze(
+            "sql_injection", "sql_template", b"SELECT 'guest'", [taint]
+        )["status"]
+        == "unknown"
+    )
     for rule, role in (
         ("ssrf", "destination_address"),
         ("path_traversal", "file_path"),
         ("command_execution", "executable"),
     ):
-        assert attack_evidence.analyze(rule, role, "guest", [taint])["status"] == "unknown"
-    assert attack_evidence.analyze("command_execution", "argument", "guest", [taint])["status"] == "no_evidence"
-    assert attack_evidence.analyze("http_request_input", "path_or_query", "guest", [taint])["status"] == "no_evidence"
+        assert (
+            attack_evidence.analyze(rule, role, "guest", [taint])["status"]
+            == "unknown"
+        )
+    assert (
+        attack_evidence.analyze(
+            "command_execution", "argument", "guest", [taint]
+        )["status"]
+        == "no_evidence"
+    )
+    assert (
+        attack_evidence.analyze(
+            "http_request_input", "path_or_query", "guest", [taint]
+        )["status"]
+        == "no_evidence"
+    )
     before = config.profile()
     monkeypatch.setenv("BEACON_SECURITY_ANALYSIS_SQL_DIALECT", "unknown")
     assert config.profile() != before
@@ -111,7 +146,9 @@ def detect(state: SecurityState, fragment: str) -> dict | None:
     )
 
 
-def test_same_request_upgrades_keep_identity_and_count_once(monkeypatch, tmp_path) -> None:
+def test_same_request_upgrades_keep_identity_and_count_once(
+    monkeypatch, tmp_path
+) -> None:
     monkeypatch.setenv("BEACON_SECURITY_ENABLED", "true")
     monkeypatch.setenv("BEACON_SECURITY_ANALYSIS_SQL_DIALECT", "ansi")
     monkeypatch.setenv("BEACON_SECURITY_LOCAL_OUTPUT_ENABLED", "false")
@@ -142,13 +179,17 @@ def test_same_request_upgrades_keep_identity_and_count_once(monkeypatch, tmp_pat
         state.close()
 
 
-def test_request_evidence_upgrades_without_retaining_production_representative(monkeypatch, tmp_path) -> None:
+def test_request_evidence_upgrades_without_retaining_production_representative(
+    monkeypatch, tmp_path
+) -> None:
     monkeypatch.setenv("BEACON_SECURITY_ENABLED", "true")
     monkeypatch.setenv("BEACON_SECURITY_ANALYSIS_SQL_DIALECT", "ansi")
     monkeypatch.setenv("BEACON_SECURITY_LOCAL_OUTPUT_ENABLED", "false")
     ledger = RuntimeLedger(IDENTITY, "attack", tmp_path)
     events = []
-    for index, fragment in enumerate(("12", "1 OR 1=1", "14", "customer_id"), 1):
+    for index, fragment in enumerate(
+        ("12", "1 OR 1=1", "14", "customer_id"), 1
+    ):
         state = SecurityState(IDENTITY)
         ledger.begin(state)
         state.trace_id = f"{index:032x}"
@@ -177,19 +218,27 @@ def test_request_evidence_upgrades_without_retaining_production_representative(m
     assert "representative" not in finding
     assert "last_trace_id" not in finding
     assert "strongest_attack_evidence" not in finding
-    assert all(event["attack_evidence"]["outcome"] == "not_assessed" for event in events)
+    assert all(
+        event["attack_evidence"]["outcome"] == "not_assessed"
+        for event in events
+    )
 
 
 def test_shell_binding_uses_actual_executable() -> None:
     from beacon_security.sinks.process import _shell_dialect
 
     assert _shell_dialect(["/bin/sh", "-c", "echo guest"], False, None) == "sh"
-    assert _shell_dialect(["/bin/sh", "-c", "echo guest"], False, "/bin/fish") == "fish"
+    assert (
+        _shell_dialect(["/bin/sh", "-c", "echo guest"], False, "/bin/fish")
+        == "fish"
+    )
     assert _shell_dialect("echo guest", True, "/bin/bash") == "bash"
     assert _shell_dialect("echo guest", None, None) == "unknown"
 
 
-def test_live_sqlite_separates_bound_values_from_dynamic_templates(monkeypatch, tmp_path) -> None:
+def test_live_sqlite_separates_bound_values_from_dynamic_templates(
+    monkeypatch, tmp_path
+) -> None:
     from test_sql_native_contract import _execute_transformed, _start_runtime
 
     monkeypatch.setenv("BEACON_SECURITY_ANALYSIS_SQL_DIALECT", "ansi")
@@ -215,7 +264,11 @@ def queries(value):
     try:
         runtime.source(value, "http.request.parameter", "q")
         assert namespace["queries"](value) == (value, 1)
-        events = [event for event in state.pending if event["rule"] == "sql_injection"]
+        events = [
+            event
+            for event in state.pending
+            if event["rule"] == "sql_injection"
+        ]
         assert len(events) == 1
         assert events[0]["attack_evidence"]["status"] == "suspected"
         assert events[0]["attack_evidence"]["outcome"] == "not_assessed"

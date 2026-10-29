@@ -58,7 +58,8 @@ def _process_started() -> tuple[str, float]:
         started = now
     wall = time.time() - (now - started)
     return (
-        time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(wall)) + ".%03dZ" % int((wall - int(wall)) * 1000),
+        time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(wall))
+        + ".%03dZ" % int((wall - int(wall)) * 1000),
         started,
     )
 
@@ -79,28 +80,50 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
     ):
         self.identity = copy.deepcopy(identity or {})
         self.emit_callback = emit_callback
-        self.max_components = _setting_int("beacon.security.sbom.max.components", 10000)
+        self.max_components = _setting_int(
+            "beacon.security.sbom.max.components", 10000
+        )
         # CycloneDX carries the application component in metadata, so reserve
         # one output-budget slot before admitting runtime/build components.
         self.max_record_components = max(0, self.max_components - 1)
-        self.cache_seconds = _setting_int("beacon.security.sbom.cache.seconds", 300)
-        self.refresh_seconds = _setting_int("beacon.security.sbom.refresh.seconds", 300)
-        self.max_archive_bytes = _setting_int("beacon.security.sbom.max.archive.bytes", 64 * 1024 * 1024)
+        self.cache_seconds = _setting_int(
+            "beacon.security.sbom.cache.seconds", 300
+        )
+        self.refresh_seconds = _setting_int(
+            "beacon.security.sbom.refresh.seconds", 300
+        )
+        self.max_archive_bytes = _setting_int(
+            "beacon.security.sbom.max.archive.bytes", 64 * 1024 * 1024
+        )
         # Entry budgets constrain discovery work; emitted component records use
         # max_components, including build-SBOM declarations.
-        self.max_entries = _setting_int("beacon.security.sbom.max.entries", 100000)
-        self.max_scan_bytes = _setting_int("beacon.security.sbom.max.scan.bytes", 512 * 1024 * 1024)
-        self.max_build_bytes = _setting_int("beacon.security.sbom.max.build.bytes", 1024 * 1024)
-        self.max_modules = _setting_int("beacon.security.sbom.max.modules", 100000)
+        self.max_entries = _setting_int(
+            "beacon.security.sbom.max.entries", 100000
+        )
+        self.max_scan_bytes = _setting_int(
+            "beacon.security.sbom.max.scan.bytes", 512 * 1024 * 1024
+        )
+        self.max_build_bytes = _setting_int(
+            "beacon.security.sbom.max.build.bytes", 1024 * 1024
+        )
+        self.max_modules = _setting_int(
+            "beacon.security.sbom.max.modules", 100000
+        )
 
         self.instance_id = _bounded(
-            self.identity.get("instance_id") or self.identity.get("instanceId") or config.identity()["instance_id"],
+            self.identity.get("instance_id")
+            or self.identity.get("instanceId")
+            or config.identity()["instance_id"],
             1024,
         )
         self.started_at, self.started_monotonic = _process_started()
         self.output = self._output_path(output)
-        self.local_output_enabled = config.flag("beacon.security.local-output.enabled", False)
-        self.build_file = _bounded(config.text("beacon.security.sbom.build.file", ""), 4096).strip()
+        self.local_output_enabled = config.flag(
+            "beacon.security.local-output.enabled", False
+        )
+        self.build_file = _bounded(
+            config.text("beacon.security.sbom.build.file", ""), 4096
+        ).strip()
 
         self._metadata = _MetadataCache()
         self._metadata_failure_reason = ""
@@ -109,7 +132,9 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
         self._build_cache_at = 0.0
         self._build_cache: dict[str, Any] | None = None
         self._build_failure_reason = ""
-        self._archive_cache: dict[str, tuple[tuple[Any, ...] | None, float, str]] = {}
+        self._archive_cache: dict[
+            str, tuple[tuple[Any, ...] | None, float, str]
+        ] = {}
         self._origin_fingerprints: dict[str, tuple[Any, ...] | None] = {}
 
         self._lock = threading.RLock()
@@ -156,7 +181,9 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
             self._stop.clear()
             self._started.clear()
             try:
-                self._thread = threading.Thread(target=self._run, name="BeaconSecurity-sbom", daemon=True)
+                self._thread = threading.Thread(
+                    target=self._run, name="BeaconSecurity-sbom", daemon=True
+                )
                 self._thread.start()
             except Exception as error:
                 self._thread = None
@@ -168,7 +195,11 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
     def close(self, timeout: float = 3.0) -> None:
         self._stop.set()
         thread = self._thread
-        if thread is not None and thread.is_alive() and thread is not threading.current_thread():
+        if (
+            thread is not None
+            and thread.is_alive()
+            and thread is not threading.current_thread()
+        ):
             thread.join(timeout=max(0.0, timeout))
         self._thread = None
 
@@ -203,7 +234,8 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
         self._last_warning_monotonic = now
         try:
             print(
-                "[Beacon Security] SBOM update failed: " + type(error).__name__,
+                "[Beacon Security] SBOM update failed: "
+                + type(error).__name__,
                 file=sys.stderr,
             )
         except BaseException:
@@ -213,9 +245,13 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
         now = time.monotonic()
         observed_at = _iso_now()
         if observed_at <= self._last_inventory_observed_at:
-            previous = dt.datetime.fromisoformat(self._last_inventory_observed_at.replace("Z", "+00:00"))
+            previous = dt.datetime.fromisoformat(
+                self._last_inventory_observed_at.replace("Z", "+00:00")
+            )
             observed_at = (
-                (previous + dt.timedelta(milliseconds=1)).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+                (previous + dt.timedelta(milliseconds=1))
+                .isoformat(timespec="milliseconds")
+                .replace("+00:00", "Z")
             )
         uptime_ms = max(0, int((now - self.started_monotonic) * 1000))
         metadata_cache = self._load_metadata(now)
@@ -240,21 +276,35 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
         archive_paths: dict[int, set[Path]] = defaultdict(set)
         # A refresh observes one set of roots. Do not retain resolved symlinks
         # or file types across refreshes, where deployments can replace them.
-        roots: dict[tuple[Path | None, Path | None], list[tuple[Path, bool]]] = {}
+        roots: dict[
+            tuple[Path | None, Path | None], list[tuple[Path, bool]]
+        ] = {}
         distribution_matches = {}
         for observation in observations:
-            if observation.origin is None or observation.namespace or observation.builtin:
+            if (
+                observation.origin is None
+                or observation.namespace
+                or observation.builtin
+            ):
                 continue
-            candidates = self._candidates(observation.name, package_map, by_name)
+            candidates = self._candidates(
+                observation.name, package_map, by_name
+            )
             matches = []
             for item in candidates:
                 key = (item.root, item.source_root)
                 if key not in roots:
                     roots[key] = self._distribution_roots(item)
-                if self._origin_matches(item, observation.origin, observation.name, roots[key]):
+                if self._origin_matches(
+                    item, observation.origin, observation.name, roots[key]
+                ):
                     matches.append(item)
             distribution_matches[id(observation)] = (candidates, matches)
-            archive = _resolve_archive_for_origin(observation.origin) if matches else None
+            archive = (
+                _resolve_archive_for_origin(observation.origin)
+                if matches
+                else None
+            )
             for distribution in matches:
                 matched_origins[id(distribution)].add(observation.origin)
                 if archive is not None:
@@ -271,10 +321,16 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
             # artifact hash describes this refresh's observed bytes.  Do not
             # retain a prior digest when the archive is gone or unreadable.
             distribution.artifact_hash = ""
-            paths = archive_paths.get(id(distribution), set()) if self.local_output_enabled else set()
+            paths = (
+                archive_paths.get(id(distribution), set())
+                if self.local_output_enabled
+                else set()
+            )
             hashes: set[str] = set()
             for archive in sorted(paths, key=str):
-                digest = self._archive_digest(archive, now, scan_bytes, reasons)
+                digest = self._archive_digest(
+                    archive, now, scan_bytes, reasons
+                )
                 if digest:
                     hashes.add(digest)
             if len(hashes) == 1:
@@ -285,8 +341,12 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
             elif self.local_output_enabled and distribution.root is not None:
                 archive = _archive_path(distribution.root)
                 if archive is not None:
-                    distribution.artifact_hash = self._archive_digest(archive, now, scan_bytes, reasons)
-            distribution.origins = set(matched_origins.get(id(distribution), set()))
+                    distribution.artifact_hash = self._archive_digest(
+                        archive, now, scan_bytes, reasons
+                    )
+            distribution.origins = set(
+                matched_origins.get(id(distribution), set())
+            )
             distribution.ref = _component_ref(
                 distribution.name or "unknown-component",
                 distribution.version,
@@ -330,7 +390,10 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
             key = _outer_origin(observation.origin)
             fingerprint = _path_fingerprint(observation.origin)
             current_fingerprints[key] = fingerprint
-            if key in previous_fingerprints and previous_fingerprints[key] != fingerprint:
+            if (
+                key in previous_fingerprints
+                and previous_fingerprints[key] != fingerprint
+            ):
                 replaced_origins.add(key)
         if replaced_origins:
             reasons.add("artifact_replaced_loaded_mapping_invalidated")
@@ -365,11 +428,18 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
                     "true" if distribution.loaded else "false",
                 )
                 if distribution.origins:
-                    occurrences = [{"location": _display_origin(item)} for item in sorted(distribution.origins)[:32]]
+                    occurrences = [
+                        {"location": _display_origin(item)}
+                        for item in sorted(distribution.origins)[:32]
+                    ]
                     if occurrences:
                         record["evidence"] = {"occurrences": occurrences}
 
-        build = self._load_build(now, reasons) if self.local_output_enabled else None
+        build = (
+            self._load_build(now, reasons)
+            if self.local_output_enabled
+            else None
+        )
         if self._build_failure_reason:
             reasons.add(self._build_failure_reason)
         if self.local_output_enabled:
@@ -400,7 +470,8 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
         if any(
             reason.endswith("_limit")
             or reason.startswith("artifact_scan_")
-            or reason in {"distribution_metadata_unavailable", "artifact_unreadable"}
+            or reason
+            in {"distribution_metadata_unavailable", "artifact_unreadable"}
             for reason in reasons
         ):
             raise ValueError("incomplete_dependency_inventory")
@@ -436,7 +507,9 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
                 stable_digest,
             )
             self.output.parent.mkdir(parents=True, exist_ok=True)
-            temporary = self._write_temp(document, self.output.parent, ".sbom-")
+            temporary = self._write_temp(
+                document, self.output.parent, ".sbom-"
+            )
             try:
                 os.replace(temporary, self.output)
             finally:
@@ -457,7 +530,9 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
 
     @staticmethod
     def _write_temp(value: dict[str, Any], parent: Path, prefix: str) -> Path:
-        descriptor, name = tempfile.mkstemp(prefix=prefix, suffix=".json", dir=parent)
+        descriptor, name = tempfile.mkstemp(
+            prefix=prefix, suffix=".json", dir=parent
+        )
         path = Path(name)
         try:
             with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
@@ -473,7 +548,9 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
             raise
         return path
 
-    def resolve(self, module_name: str, filename: str | None = None) -> dict[str, Any]:
+    def resolve(
+        self, module_name: str, filename: str | None = None
+    ) -> dict[str, Any]:
         """Resolve a loaded module against one immutable published snapshot."""
 
         name = _bounded(module_name, 512)
@@ -487,13 +564,19 @@ class SbomInventory(_MetadataSupport, _BuildSupport):
                 actual = _normalize_origin_for_lookup(filename)
                 if expected and actual != expected:
                     return {}
-            return component_reference(snapshot["components"].get(item.get("bom-ref")))
+            return component_reference(
+                snapshot["components"].get(item.get("bom-ref"))
+            )
 
     def health(self) -> dict[str, Any]:
         with self._lock:
             snapshot = self._published
             if not self._last_success_monotonic:
-                status = "degraded" if self._last_failure_monotonic else "initializing"
+                status = (
+                    "degraded"
+                    if self._last_failure_monotonic
+                    else "initializing"
+                )
             elif self._last_failure_monotonic > self._last_success_monotonic:
                 status = "degraded"
             else:

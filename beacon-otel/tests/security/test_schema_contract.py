@@ -15,11 +15,19 @@ from beacon_security.telemetry import project_event
 from jsonschema import Draft202012Validator, FormatChecker
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "spec"
-VECTORS = json.loads((FIXTURES / "fingerprint-v1.json").read_text(encoding="utf-8"))
-SCHEMA = json.loads((FIXTURES / "beacon-security-event-v2.schema.json").read_text(encoding="utf-8"))
+VECTORS = json.loads(
+    (FIXTURES / "fingerprint-v1.json").read_text(encoding="utf-8")
+)
+SCHEMA = json.loads(
+    (FIXTURES / "beacon-security-event-v2.schema.json").read_text(
+        encoding="utf-8"
+    )
+)
 VALIDATOR = Draft202012Validator(SCHEMA, format_checker=FormatChecker())
 IDENTITY = {
-    "application_id": ("app-dc6b8b0dc435531262eedacdf8fe51bd619964caa0e12bb4c29477448fdda8ae"),
+    "application_id": (
+        "app-dc6b8b0dc435531262eedacdf8fe51bd619964caa0e12bb4c29477448fdda8ae"
+    ),
     "instance_id": "233cf30d-c73b-4365-b052-0e7159ee6268",
     "service": {"service.name": "orders"},
     "code": {
@@ -44,7 +52,9 @@ def _validate(event: dict) -> None:
     VALIDATOR.validate(event)
 
 
-def test_pins_beacon_security_schema_version_2_and_fingerprint_version_1() -> None:
+def test_pins_beacon_security_schema_version_2_and_fingerprint_version_1() -> (
+    None
+):
     assert SCHEMA_VERSION == 2
     assert FINGERPRINT_VERSION == 1
     assert PRODUCT == "io.beacon.security"
@@ -115,7 +125,11 @@ def test_emits_only_compact_v2_finding_and_inventory() -> None:
                 "coverage": "modeled_calls_only",
                 "coverage_gaps": [],
                 "request": {},
-                "component": {"name": "unknown-version", "version": "", "hash": "abc"},
+                "component": {
+                    "name": "unknown-version",
+                    "version": "",
+                    "hash": "abc",
+                },
                 "stack": [],
                 "evidence_sampled": True,
                 "collection_complete": True,
@@ -129,7 +143,11 @@ def test_emits_only_compact_v2_finding_and_inventory() -> None:
     assert "application_id" not in finding
     assert "runtime" not in finding
     assert "evidence_id" not in finding
-    assert finding["component"] == {"name": "unknown-version", "version": "", "hash": "abc"}
+    assert finding["component"] == {
+        "name": "unknown-version",
+        "version": "",
+        "hash": "abc",
+    }
     _validate(finding)
 
     snapshot = project_event(

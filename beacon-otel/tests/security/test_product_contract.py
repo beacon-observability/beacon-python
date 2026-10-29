@@ -16,7 +16,9 @@ from pathlib import Path
 from beacon_otel.version import __version__
 
 
-def test_snapshot_freezes_rows_without_blocking_collection_or_losing_updates(monkeypatch, tmp_path):
+def test_snapshot_freezes_rows_without_blocking_collection_or_losing_updates(
+    monkeypatch, tmp_path
+):
     _configure_exporter_env(monkeypatch, tmp_path)
     from beacon_security.ledger import RuntimeLedger
     from beacon_security.state import SecurityState
@@ -67,7 +69,9 @@ def test_snapshot_freezes_rows_without_blocking_collection_or_losing_updates(mon
                 "evidence_id": "snapshot-evidence",
                 "event_name": "beacon.security.finding",
                 "rule": "sql_injection",
-                "sources": [{"id": "s1", "type": "http.request.parameter", "name": "q"}],
+                "sources": [
+                    {"id": "s1", "type": "http.request.parameter", "name": "q"}
+                ],
                 "propagation": [{"id": 1, "operation": "source"}],
             }
         )
@@ -88,7 +92,9 @@ def test_snapshot_freezes_rows_without_blocking_collection_or_losing_updates(mon
 
     monkeypatch.setattr(ledger, "_write_snapshot", blocked_write)
     request()
-    worker = threading.Thread(target=lambda: ledger.tick({}, lambda _event: None, force=True))
+    worker = threading.Thread(
+        target=lambda: ledger.tick({}, lambda _event: None, force=True)
+    )
     worker.start()
     try:
         assert entered.wait(2)
@@ -97,7 +103,12 @@ def test_snapshot_freezes_rows_without_blocking_collection_or_losing_updates(mon
         release.set()
         worker.join(4)
     assert not worker.is_alive()
-    assert json.loads((tmp_path / "findings.json").read_text())["findings"][0]["occurrences"] == 1
+    assert (
+        json.loads((tmp_path / "findings.json").read_text())["findings"][0][
+            "occurrences"
+        ]
+        == 1
+    )
     run = json.loads((tmp_path / "runs.json").read_text())["runs"][0]
     for field in (
         "source_signatures",
@@ -106,7 +117,12 @@ def test_snapshot_freezes_rows_without_blocking_collection_or_losing_updates(mon
     ):
         assert list(run[field].values()) == [1]
     ledger.tick({}, lambda _event: None, force=True)
-    assert json.loads((tmp_path / "findings.json").read_text())["findings"][0]["occurrences"] == 2
+    assert (
+        json.loads((tmp_path / "findings.json").read_text())["findings"][0][
+            "occurrences"
+        ]
+        == 2
+    )
     run = json.loads((tmp_path / "runs.json").read_text())["runs"][0]
     for field in (
         "source_signatures",
@@ -129,12 +145,24 @@ def test_snapshot_freezes_rows_without_blocking_collection_or_losing_updates(mon
 
     monkeypatch.setattr(ledger, "_write_snapshot", failing_write)
     ledger.tick({}, lambda _event: None, force=True)
-    assert json.loads((tmp_path / "findings.json").read_text())["findings"][0]["occurrences"] == 2
+    assert (
+        json.loads((tmp_path / "findings.json").read_text())["findings"][0][
+            "occurrences"
+        ]
+        == 2
+    )
     ledger.tick({}, lambda _event: None, force=True)
-    assert json.loads((tmp_path / "findings.json").read_text())["findings"][0]["occurrences"] == 3
+    assert (
+        json.loads((tmp_path / "findings.json").read_text())["findings"][0][
+            "occurrences"
+        ]
+        == 3
+    )
 
 
-def test_repeated_findings_preserve_samples_counts_and_new_run_details(monkeypatch, tmp_path):
+def test_repeated_findings_preserve_samples_counts_and_new_run_details(
+    monkeypatch, tmp_path
+):
     from beacon_security import ledger as ledger_module
     from beacon_security.ledger import RuntimeLedger
     from beacon_security.state import SecurityState
@@ -145,7 +173,9 @@ def test_repeated_findings_preserve_samples_counts_and_new_run_details(monkeypat
     ledger = RuntimeLedger(_identity(), "sample-profile", tmp_path)
 
     def request(label):
-        state = SecurityState(_identity(), metadata={"method": "GET", "route": "/" + label})
+        state = SecurityState(
+            _identity(), metadata={"method": "GET", "route": "/" + label}
+        )
         ledger.begin(state)
         state.trace_id = label
         value = "query-" + label
@@ -164,7 +194,9 @@ def test_repeated_findings_preserve_samples_counts_and_new_run_details(monkeypat
         return event, result
 
     first, emitted = request("first")
-    assert len(emitted) == 1 and emitted[0]["propagation"] == first["propagation"]
+    assert (
+        len(emitted) == 1 and emitted[0]["propagation"] == first["propagation"]
+    )
     clock[0] += 1000
     repeated, emitted = request("repeated")
     assert len(emitted) == 1
@@ -206,7 +238,9 @@ def test_repeated_findings_preserve_samples_counts_and_new_run_details(monkeypat
     )
     ledger.tick({}, lambda _: None, force=True)
     third, emitted = request("new-run")
-    assert len(emitted) == 1 and emitted[0]["propagation"] == third["propagation"]
+    assert (
+        len(emitted) == 1 and emitted[0]["propagation"] == third["propagation"]
+    )
     request("in-run")
     ledger.tick({}, lambda _: None, force=True)
     run = _read_json(tmp_path / "runs.json")["runs"][0]
@@ -214,11 +248,17 @@ def test_repeated_findings_preserve_samples_counts_and_new_run_details(monkeypat
     assert list(run["risk_source_signatures"].values()) == [2]
     clock[0] += 301_000
     last, emitted = request("after-interval")
-    assert len(emitted) == 1 and emitted[0]["propagation"] == last["propagation"]
+    assert (
+        len(emitted) == 1 and emitted[0]["propagation"] == last["propagation"]
+    )
 
 
-def test_run_counter_budget_is_shared_across_runs_and_keeps_existing_counts(monkeypatch, tmp_path):
-    _configure_exporter_env(monkeypatch, tmp_path, BEACON_SECURITY_RUNS_MAX_BYTES=700)
+def test_run_counter_budget_is_shared_across_runs_and_keeps_existing_counts(
+    monkeypatch, tmp_path
+):
+    _configure_exporter_env(
+        monkeypatch, tmp_path, BEACON_SECURITY_RUNS_MAX_BYTES=700
+    )
     from beacon_security.ledger import RuntimeLedger
     from beacon_security.state import SecurityState
 
@@ -259,7 +299,9 @@ def test_run_counter_budget_is_shared_across_runs_and_keeps_existing_counts(monk
                 "finding_id": "finding-" + key,
                 "evidence_id": "evidence-" + key,
                 "rule": "sql_injection",
-                "sources": [{"id": "s1", "type": "http.request.parameter", "name": key}],
+                "sources": [
+                    {"id": "s1", "type": "http.request.parameter", "name": key}
+                ],
             }
         )
         return state
@@ -276,7 +318,10 @@ def test_run_counter_budget_is_shared_across_runs_and_keeps_existing_counts(monk
     ledger.end(pending)
     pending.close()
     control(None)
-    runs = {run["run_id"]: run for run in json.loads((tmp_path / "runs.json").read_text())["runs"]}
+    runs = {
+        run["run_id"]: run
+        for run in json.loads((tmp_path / "runs.json").read_text())["runs"]
+    }
     for field in (
         "source_signatures",
         "risk_source_signatures",
@@ -322,7 +367,11 @@ def _identity():
 
 
 def _read_jsonl(path: Path):
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return [
+        json.loads(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
 
 
 def _finding_event(occurrence_id: str, **values):
@@ -385,10 +434,14 @@ def test_finding_exception_survives_instance_restart(monkeypatch, tmp_path):
         assert ledger._triage(finding_id)["decision"] == "accepted_risk"
 
 
-def test_evidence_file_is_independent_of_local_snapshots(monkeypatch, tmp_path):
+def test_evidence_file_is_independent_of_local_snapshots(
+    monkeypatch, tmp_path
+):
     from beacon_security.exporter import Exporter
 
-    _configure_exporter_env(monkeypatch, tmp_path, BEACON_SECURITY_LOCAL_OUTPUT_ENABLED="false")
+    _configure_exporter_env(
+        monkeypatch, tmp_path, BEACON_SECURITY_LOCAL_OUTPUT_ENABLED="false"
+    )
     exporter = Exporter(_identity(), "evidence-file", tmp_path)
     try:
         assert exporter._monitor is None
@@ -396,11 +449,16 @@ def test_evidence_file_is_independent_of_local_snapshots(monkeypatch, tmp_path):
         assert exporter.flush(timeout=5)
     finally:
         exporter.close()
-    assert _read_jsonl(tmp_path / "evidence.jsonl")[0]["occurrence_id"] == "file-only"
+    assert (
+        _read_jsonl(tmp_path / "evidence.jsonl")[0]["occurrence_id"]
+        == "file-only"
+    )
     assert not (tmp_path / "findings.json").exists()
 
 
-def test_exporter_emits_only_v2_sources_and_drops_oversized_records(monkeypatch, tmp_path):
+def test_exporter_emits_only_v2_sources_and_drops_oversized_records(
+    monkeypatch, tmp_path
+):
     from beacon_security.exporter import Exporter
 
     from opentelemetry.sdk._logs import LoggerProvider
@@ -414,7 +472,9 @@ def test_exporter_emits_only_v2_sources_and_drops_oversized_records(monkeypatch,
     provider = LoggerProvider()
     provider.add_log_record_processor(SimpleLogRecordProcessor(logs))
     exporter = Exporter(_identity(), "source-routing", tmp_path)
-    exporter._otel_logger = provider.get_logger("io.beacon.security", __version__)
+    exporter._otel_logger = provider.get_logger(
+        "io.beacon.security", __version__
+    )
     try:
         exporter.emit(_finding_event("normal"))
         exporter.emit(_inventory_event(1))
@@ -428,18 +488,27 @@ def test_exporter_emits_only_v2_sources_and_drops_oversized_records(monkeypatch,
         assert exporter.flush(timeout=5.0)
         records = logs.get_finished_logs()
         bodies = [json.loads(item.log_record.body) for item in records]
-        assert sorted((item["event_name"], item["source"]) for item in bodies) == sorted(
+        assert sorted(
+            (item["event_name"], item["source"]) for item in bodies
+        ) == sorted(
             [
                 ("beacon.security.finding", "beacon_security"),
                 ("beacon.security.sbom.inventory", "beacon_security_sbom"),
             ]
         )
         assert all(item["schema_version"] == 2 for item in bodies)
-        assert all(record.log_record.attributes["source"] == body["source"] for record, body in zip(records, bodies))
-        assert all(record.log_record.severity_text == "INFO" for record in records)
+        assert all(
+            record.log_record.attributes["source"] == body["source"]
+            for record, body in zip(records, bodies)
+        )
+        assert all(
+            record.log_record.severity_text == "INFO" for record in records
+        )
         logs.clear()
         exporter._max_bytes = 1024
-        exporter.emit(_finding_event("reduced", sources=[{"detail": "x" * 4096}]))
+        exporter.emit(
+            _finding_event("reduced", sources=[{"detail": "x" * 4096}])
+        )
         assert exporter.flush(timeout=5.0)
         reduced = json.loads(logs.get_finished_logs()[0].log_record.body)
         assert reduced["event_name"] == "beacon.security.finding"
@@ -448,7 +517,9 @@ def test_exporter_emits_only_v2_sources_and_drops_oversized_records(monkeypatch,
         assert "sources" not in reduced
         logs.clear()
         exporter._max_bytes = 128
-        exporter.emit(_finding_event("dropped", sources=[{"detail": "x" * 4096}]))
+        exporter.emit(
+            _finding_event("dropped", sources=[{"detail": "x" * 4096}])
+        )
         assert exporter.flush(timeout=5.0)
         assert logs.get_finished_logs() == ()
     finally:
@@ -456,7 +527,9 @@ def test_exporter_emits_only_v2_sources_and_drops_oversized_records(monkeypatch,
         provider.shutdown()
 
 
-def test_exporter_reuses_existing_otel_provider_and_bridges_enqueued_trace_context(monkeypatch, tmp_path):
+def test_exporter_reuses_existing_otel_provider_and_bridges_enqueued_trace_context(
+    monkeypatch, tmp_path
+):
     """A queued record keeps the span context after the application span closes."""
 
     _configure_exporter_env(monkeypatch, tmp_path)
@@ -472,14 +545,20 @@ def test_exporter_reuses_existing_otel_provider_and_bridges_enqueued_trace_conte
     from opentelemetry.sdk.trace import TracerProvider
 
     log_exporter = InMemoryLogRecordExporter()
-    logger_provider = LoggerProvider(resource=Resource.create({"service.name": "qa-product"}))
-    logger_provider.add_log_record_processor(SimpleLogRecordProcessor(log_exporter))
+    logger_provider = LoggerProvider(
+        resource=Resource.create({"service.name": "qa-product"})
+    )
+    logger_provider.add_log_record_processor(
+        SimpleLogRecordProcessor(log_exporter)
+    )
     set_logger_provider(logger_provider)
     tracer_provider = TracerProvider()
     tracer = tracer_provider.get_tracer("qa-product")
     exporter = Exporter(_identity(), "qa-profile", tmp_path)
     try:
-        existing_logger = logger_provider.get_logger("io.beacon.security", __version__)
+        existing_logger = logger_provider.get_logger(
+            "io.beacon.security", __version__
+        )
         assert exporter._otel_logger is existing_logger
 
         with tracer.start_as_current_span("product-contract") as span:
@@ -499,7 +578,10 @@ def test_exporter_reuses_existing_otel_provider_and_bridges_enqueued_trace_conte
         matching = [
             record
             for record in records
-            if json.loads(str(getattr(record, "log_record", record).body)).get("occurrence_id") == "ev-product-context"
+            if json.loads(str(getattr(record, "log_record", record).body)).get(
+                "occurrence_id"
+            )
+            == "ev-product-context"
         ]
         assert len(matching) == 1
         log_record = getattr(matching[0], "log_record", matching[0])
@@ -517,14 +599,19 @@ def test_exporter_reuses_existing_otel_provider_and_bridges_enqueued_trace_conte
         assert scope.version == __version__
         assert log_record.trace_id == span_context.trace_id
         assert log_record.span_id == span_context.span_id
-        assert _read_jsonl(tmp_path / "evidence.jsonl")[0]["occurrence_id"] == "ev-product-context"
+        assert (
+            _read_jsonl(tmp_path / "evidence.jsonl")[0]["occurrence_id"]
+            == "ev-product-context"
+        )
     finally:
         exporter.close()
         tracer_provider.shutdown()
         logger_provider.shutdown()
 
 
-def test_security_and_sbom_queues_are_independent_and_fail_open_on_full_queue(monkeypatch, tmp_path):
+def test_security_and_sbom_queues_are_independent_and_fail_open_on_full_queue(
+    monkeypatch, tmp_path
+):
     """A full channel does not block or redirect records into the other channel."""
 
     _configure_exporter_env(
@@ -556,7 +643,9 @@ def test_security_and_sbom_queues_are_independent_and_fail_open_on_full_queue(mo
         exporter.close()
 
 
-def test_jsonl_rotation_and_otel_failure_keep_local_evidence_fail_open(monkeypatch, tmp_path):
+def test_jsonl_rotation_and_otel_failure_keep_local_evidence_fail_open(
+    monkeypatch, tmp_path
+):
     """OTel API failure is visible in delivery counters but does not erase JSONL evidence."""
 
     _configure_exporter_env(
@@ -594,13 +683,19 @@ def test_jsonl_rotation_and_otel_failure_keep_local_evidence_fail_open(monkeypat
     assert len(files) >= 2
     records = [record for path in files for record in _read_jsonl(path)]
     assert len(records) >= 3
-    assert all(record["event_name"] == "beacon.security.finding" for record in records)
+    assert all(
+        record["event_name"] == "beacon.security.finding" for record in records
+    )
 
 
-def test_sbom_budget_waits_without_losing_snapshots_or_blocking_security(monkeypatch, tmp_path):
+def test_sbom_budget_waits_without_losing_snapshots_or_blocking_security(
+    monkeypatch, tmp_path
+):
     from beacon_security.exporter import Exporter
 
-    _configure_exporter_env(monkeypatch, tmp_path, BEACON_SECURITY_EXPORT_SBOM_EVENTS_PER_SECOND=1)
+    _configure_exporter_env(
+        monkeypatch, tmp_path, BEACON_SECURITY_EXPORT_SBOM_EVENTS_PER_SECOND=1
+    )
     exporter = Exporter(_identity(), "deferred", tmp_path)
     emitted, security_delivered = [], threading.Event()
 
@@ -617,7 +712,9 @@ def test_sbom_budget_waits_without_losing_snapshots_or_blocking_security(monkeyp
         assert security_delivered.wait(1)
         assert exporter.flush(timeout=4)
         assert [
-            event["uptime_ms"] for event in emitted if event.get("event_name") == "beacon.security.sbom.inventory"
+            event["uptime_ms"]
+            for event in emitted
+            if event.get("event_name") == "beacon.security.sbom.inventory"
         ] == [0, 1, 2]
         delivery = exporter.delivery()
         assert delivery["sbom_dropped"] == delivery["security_dropped"] == 0
@@ -626,17 +723,25 @@ def test_sbom_budget_waits_without_losing_snapshots_or_blocking_security(monkeyp
         exporter.close()
 
 
-def test_delivery_loss_marks_a_real_run_incomplete_even_when_finding_observed(monkeypatch, tmp_path):
+def test_delivery_loss_marks_a_real_run_incomplete_even_when_finding_observed(
+    monkeypatch, tmp_path
+):
     """A run carrying delivery loss cannot support a negative verification."""
 
     _configure_exporter_env(monkeypatch, tmp_path)
-    monkeypatch.setenv("BEACON_SECURITY_CONTROL_FILE", str(tmp_path / "control.json"))
+    monkeypatch.setenv(
+        "BEACON_SECURITY_CONTROL_FILE", str(tmp_path / "control.json")
+    )
     from beacon_security.ledger import RuntimeLedger
     from beacon_security.state import SecurityState
 
     identity = _identity()
     ledger = RuntimeLedger(identity, "qa-profile", tmp_path)
-    expires = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
+    expires = (
+        (datetime.now(timezone.utc) + timedelta(minutes=5))
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
     control = {
         "schema_version": 1,
         "revision": "start-run",
@@ -653,7 +758,9 @@ def test_delivery_loss_marks_a_real_run_incomplete_even_when_finding_observed(mo
             },
         },
     }
-    (tmp_path / "control.json").write_text(json.dumps(control), encoding="utf-8")
+    (tmp_path / "control.json").write_text(
+        json.dumps(control), encoding="utf-8"
+    )
     ledger.tick({}, lambda _event: None, force=True)
 
     request_metadata = {
@@ -687,9 +794,15 @@ def test_delivery_loss_marks_a_real_run_incomplete_even_when_finding_observed(mo
 
     control["revision"] = "stop-run"
     control["run"] = None
-    (tmp_path / "control.json").write_text(json.dumps(control), encoding="utf-8")
+    (tmp_path / "control.json").write_text(
+        json.dumps(control), encoding="utf-8"
+    )
     ledger.tick({}, lambda _event: None, force=True)
-    run = next(item for item in _read_json(tmp_path / "runs.json")["runs"] if item["run_id"] == "loss-run")
+    run = next(
+        item
+        for item in _read_json(tmp_path / "runs.json")["runs"]
+        if item["run_id"] == "loss-run"
+    )
     assert run["last_request"] == request_metadata
     assert run["status"] == "closed"
     assert run["delivery_loss"] == 1
@@ -700,8 +813,12 @@ def test_delivery_loss_marks_a_real_run_incomplete_even_when_finding_observed(mo
     baseline["delivery_loss"] = 0
     baseline["incomplete_requests"] = 0
     candidate = dict(run)
-    (tmp_path / "baseline.json").write_text(json.dumps(baseline), encoding="utf-8")
-    (tmp_path / "candidate.json").write_text(json.dumps(candidate), encoding="utf-8")
+    (tmp_path / "baseline.json").write_text(
+        json.dumps(baseline), encoding="utf-8"
+    )
+    (tmp_path / "candidate.json").write_text(
+        json.dumps(candidate), encoding="utf-8"
+    )
     cli = Path(__file__).resolve().parent / "fixtures" / "securityctl.py"
     completed = subprocess.run(
         [
@@ -723,11 +840,15 @@ def test_delivery_loss_marks_a_real_run_incomplete_even_when_finding_observed(mo
     assert "candidate_observation_or_delivery_loss" in report["reasons"]
 
 
-def test_request_fields_are_retained_across_event_finding_and_run(monkeypatch, tmp_path):
+def test_request_fields_are_retained_across_event_finding_and_run(
+    monkeypatch, tmp_path
+):
     """One observed request keeps the same descriptive context in all snapshots."""
 
     _configure_exporter_env(monkeypatch, tmp_path)
-    monkeypatch.setenv("BEACON_SECURITY_CONTROL_FILE", str(tmp_path / "control.json"))
+    monkeypatch.setenv(
+        "BEACON_SECURITY_CONTROL_FILE", str(tmp_path / "control.json")
+    )
     from beacon_security.ledger import RuntimeLedger
     from beacon_security.state import SecurityState
 
@@ -744,7 +865,11 @@ def test_request_fields_are_retained_across_event_finding_and_run(monkeypatch, t
         "transport": "http",
         "error_type": "",
     }
-    expires = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
+    expires = (
+        (datetime.now(timezone.utc) + timedelta(minutes=5))
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
     control = {
         "schema_version": 1,
         "revision": "shape-start",
@@ -761,7 +886,9 @@ def test_request_fields_are_retained_across_event_finding_and_run(monkeypatch, t
             },
         },
     }
-    (tmp_path / "control.json").write_text(json.dumps(control), encoding="utf-8")
+    (tmp_path / "control.json").write_text(
+        json.dumps(control), encoding="utf-8"
+    )
     ledger.tick({}, lambda _event: None, force=True)
 
     state = SecurityState(identity, metadata=request)
@@ -780,14 +907,20 @@ def test_request_fields_are_retained_across_event_finding_and_run(monkeypatch, t
 
     control["revision"] = "shape-stop"
     control["run"] = None
-    (tmp_path / "control.json").write_text(json.dumps(control), encoding="utf-8")
+    (tmp_path / "control.json").write_text(
+        json.dumps(control), encoding="utf-8"
+    )
     ledger.tick({}, lambda _event: None, force=True)
     finding = next(
         item
         for item in _read_json(tmp_path / "findings.json")["findings"]
         if item["finding_id"] == events[0]["finding_id"]
     )
-    run = next(item for item in _read_json(tmp_path / "runs.json")["runs"] if item["run_id"] == "shape-run")
+    run = next(
+        item
+        for item in _read_json(tmp_path / "runs.json")["runs"]
+        if item["run_id"] == "shape-run"
+    )
     expected_fields = {
         "method",
         "route",
@@ -819,7 +952,9 @@ def _read_json(path: Path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def test_shutdown_deadlines_cover_monitor_snapshot_and_writer_close(monkeypatch, tmp_path):
+def test_shutdown_deadlines_cover_monitor_snapshot_and_writer_close(
+    monkeypatch, tmp_path
+):
     import os
     import time
     from types import SimpleNamespace
@@ -840,7 +975,11 @@ def test_shutdown_deadlines_cover_monitor_snapshot_and_writer_close(monkeypatch,
 
     monkeypatch.setattr(RuntimeLedger, "_write_snapshot", blocked_write)
     exporter = Exporter(_identity(), "deadline", tmp_path)
-    workers = {t.ident for t in threading.enumerate() if t.name == "BeaconSecurity-flush"}
+    workers = {
+        t.ident
+        for t in threading.enumerate()
+        if t.name == "BeaconSecurity-flush"
+    }
     monkeypatch.setattr(
         runtime,
         "_runtime",
@@ -860,7 +999,11 @@ def test_shutdown_deadlines_cover_monitor_snapshot_and_writer_close(monkeypatch,
         assert time.monotonic() - start < 0.3
         for _ in range(3):
             runtime.flush(timeout=0.005)
-        assert {t.ident for t in threading.enumerate() if t.name == "BeaconSecurity-flush"}.issubset(workers)
+        assert {
+            t.ident
+            for t in threading.enumerate()
+            if t.name == "BeaconSecurity-flush"
+        }.issubset(workers)
         assert exporter._flush_worker.is_alive()
         assert exporter.ledger._runs["blocked"]["incomplete_requests"] > 0
     finally:
@@ -888,7 +1031,9 @@ def test_shutdown_deadlines_cover_monitor_snapshot_and_writer_close(monkeypatch,
         other.close(timeout=1)
 
 
-def test_natural_process_exit_drains_without_creating_threads_in_atexit(monkeypatch, tmp_path):
+def test_natural_process_exit_drains_without_creating_threads_in_atexit(
+    monkeypatch, tmp_path
+):
     import os
 
     _configure_exporter_env(monkeypatch, tmp_path)
@@ -926,4 +1071,9 @@ current.exporter.ledger._runs_revision += 1
         assert result.returncode == 0, result.stderr
         assert result.stdout.splitlines() == ["provider-flush"], result.stderr
         assert "Exception ignored in atexit callback" not in result.stderr
-        assert json.loads((output / "runs.json").read_text())["runs"][0]["requests"] == 1
+        assert (
+            json.loads((output / "runs.json").read_text())["runs"][0][
+                "requests"
+            ]
+            == 1
+        )

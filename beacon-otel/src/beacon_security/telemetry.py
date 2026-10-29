@@ -29,7 +29,9 @@ def project_event(event: Mapping[str, Any]) -> dict[str, Any] | None:
         return None
     result: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
-        "source": "beacon_security" if name == FINDING else "beacon_security_sbom",
+        "source": "beacon_security"
+        if name == FINDING
+        else "beacon_security_sbom",
         "event_name": name,
         "instance_id": event["instance_id"],
         "observed_at": event["observed_at"],
@@ -59,7 +61,9 @@ def project_event(event: Mapping[str, Any]) -> dict[str, Any] | None:
     )
     evidence = event.get("attack_evidence")
     result["attack_evidence"] = {
-        "status": evidence.get("status", "unknown") if isinstance(evidence, Mapping) else "unknown",
+        "status": evidence.get("status", "unknown")
+        if isinstance(evidence, Mapping)
+        else "unknown",
         "reason": evidence.get("reason", "analysis_unavailable")
         if isinstance(evidence, Mapping)
         else "analysis_unavailable",
@@ -89,7 +93,9 @@ def project_event(event: Mapping[str, Any]) -> dict[str, Any] | None:
     current_span = event.get("current_span_id")
     if _present(current_span) and current_span != event.get("server_span_id"):
         result["current_span_id"] = current_span
-    request = _fields(event.get("request"), ("method", "route", "status_code", "error_type"))
+    request = _fields(
+        event.get("request"), ("method", "route", "status_code", "error_type")
+    )
     if request:
         result["request"] = request
     component = event.get("component")

@@ -15,7 +15,10 @@ from beacon_security.state import SecurityState
 from jsonschema import Draft202012Validator, FormatChecker
 
 _SCHEMA = json.loads(
-    (Path(__file__).resolve().parent / "fixtures/spec/beacon-security-event-v2.schema.json").read_text()
+    (
+        Path(__file__).resolve().parent
+        / "fixtures/spec/beacon-security-event-v2.schema.json"
+    ).read_text()
 )
 _VALIDATOR = Draft202012Validator(_SCHEMA, format_checker=FormatChecker())
 
@@ -49,7 +52,9 @@ def occurrence(
     state.source(value, "http.request.parameter", "q")
     marks = state.marks(value)
     if fragment is not None:
-        marks = tuple(replace(mark, start=value.index(fragment)) for mark in marks)
+        marks = tuple(
+            replace(mark, start=value.index(fragment)) for mark in marks
+        )
     try:
         event = state.sink(
             "sql_injection",
@@ -80,7 +85,9 @@ def occurrence(
         state.close()
 
 
-def test_distinct_requests_keep_occurrence_ids_and_missing_trace(monkeypatch, tmp_path) -> None:
+def test_distinct_requests_keep_occurrence_ids_and_missing_trace(
+    monkeypatch, tmp_path
+) -> None:
     configure(monkeypatch, tmp_path)
     ledger = RuntimeLedger(IDENTITY, "occurrences", tmp_path)
     events = [occurrence(ledger, index) for index in (1, 2, 0)]
@@ -100,10 +107,15 @@ def test_distinct_requests_keep_occurrence_ids_and_missing_trace(monkeypatch, tm
     for event in events[1:]:
         assert event["evidence_sample_reason"] == "interval"
         assert not event.get("truncated", False)
-        assert all(event[field] == [] for field in ("sources", "propagation", "ranges", "stack"))
+        assert all(
+            event[field] == []
+            for field in ("sources", "propagation", "ranges", "stack")
+        )
 
 
-def test_aggregation_saturation_preserves_occurrence(monkeypatch, tmp_path) -> None:
+def test_aggregation_saturation_preserves_occurrence(
+    monkeypatch, tmp_path
+) -> None:
     configure(monkeypatch, tmp_path)
     ledger = RuntimeLedger(IDENTITY, "capacity", tmp_path)
     ledger._max_findings = 1
@@ -121,14 +133,20 @@ def test_concurrent_requests_are_independent(monkeypatch, tmp_path) -> None:
     configure(monkeypatch, tmp_path)
     ledger = RuntimeLedger(IDENTITY, "concurrency", tmp_path)
     with ThreadPoolExecutor(max_workers=4) as pool:
-        events = list(pool.map(lambda index: occurrence(ledger, index), range(1, 13)))
+        events = list(
+            pool.map(lambda index: occurrence(ledger, index), range(1, 13))
+        )
     assert len({event["occurrence_id"] for event in events}) == 12
     assert all("occurrences_total" not in event for event in events)
-    assert [event["trace_id"] for event in events] == [f"{index:032x}" for index in range(1, 13)]
+    assert [event["trace_id"] for event in events] == [
+        f"{index:032x}" for index in range(1, 13)
+    ]
 
 
 @pytest.mark.parametrize("fragments", [None, ("12", "1 OR 1=1", "14")])
-def test_lightweight_occurrences_reach_otlp_http(monkeypatch, tmp_path, fragments) -> None:
+def test_lightweight_occurrences_reach_otlp_http(
+    monkeypatch, tmp_path, fragments
+) -> None:
     from beacon_security.exporter import Exporter
 
     from opentelemetry.exporter.otlp.proto.http._log_exporter import (
@@ -146,9 +164,14 @@ def test_lightweight_occurrences_reach_otlp_http(monkeypatch, tmp_path, fragment
     class Receiver(BaseHTTPRequestHandler):
         def do_POST(self) -> None:
             request = ExportLogsServiceRequest()
-            request.ParseFromString(self.rfile.read(int(self.headers["Content-Length"])))
+            request.ParseFromString(
+                self.rfile.read(int(self.headers["Content-Length"]))
+            )
             received.extend(
-                log for resource in request.resource_logs for scope in resource.scope_logs for log in scope.log_records
+                log
+                for resource in request.resource_logs
+                for scope in resource.scope_logs
+                for log in scope.log_records
             )
             self.send_response(200)
             self.end_headers()
@@ -186,7 +209,8 @@ def test_lightweight_occurrences_reach_otlp_http(monkeypatch, tmp_path, fragment
         findings = [
             (log, json.loads(log.body.string_value))
             for log in received
-            if json.loads(log.body.string_value).get("event_name") == "beacon.security.finding"
+            if json.loads(log.body.string_value).get("event_name")
+            == "beacon.security.finding"
         ]
         assert len(findings) == 3
         for _, body in findings:
@@ -202,13 +226,20 @@ def test_lightweight_occurrences_reach_otlp_http(monkeypatch, tmp_path, fragment
             False,
         ]
         if fragments:
-            assert [event["attack_evidence"]["status"] for _, event in findings] == [
+            assert [
+                event["attack_evidence"]["status"] for _, event in findings
+            ] == [
                 "no_evidence",
                 "suspected",
                 "no_evidence",
             ]
-            assert all(set(event["attack_evidence"]) == {"status", "reason"} for _, event in findings)
-        assert [log.trace_id.hex() for log, _ in findings] == [f"{index:032x}" for index in (1, 2, 3)]
+            assert all(
+                set(event["attack_evidence"]) == {"status", "reason"}
+                for _, event in findings
+            )
+        assert [log.trace_id.hex() for log, _ in findings] == [
+            f"{index:032x}" for index in (1, 2, 3)
+        ]
         for _, event in findings:
             assert "trace_availability" not in event
     finally:

@@ -139,9 +139,13 @@ def test_lower_or_equal_priority_cannot_replace_attack_evidence(
     assert exporter.delivery()["counters"]["security.queue_full"] == 2
 
 
-def test_late_attacks_survive_spent_ordinary_event_budget(paused_exporter, monkeypatch):
+def test_late_attacks_survive_spent_ordinary_event_budget(
+    paused_exporter, monkeypatch
+):
     exporter = paused_exporter
-    monkeypatch.setenv("BEACON_SECURITY_EXPORT_SECURITY_EVENTS_PER_SECOND", "10")
+    monkeypatch.setenv(
+        "BEACON_SECURITY_EXPORT_SECURITY_EVENTS_PER_SECOND", "10"
+    )
     for index in range(8):
         exporter.emit(event(index))
 
@@ -161,9 +165,13 @@ def test_late_attacks_survive_spent_ordinary_event_budget(paused_exporter, monke
     assert exporter.delivery()["counters"]["security.budget_exceeded"] == 1
 
 
-def test_byte_reserves_and_oversized_rejection_keep_total_bound(paused_exporter, monkeypatch):
+def test_byte_reserves_and_oversized_rejection_keep_total_bound(
+    paused_exporter, monkeypatch
+):
     exporter = paused_exporter
-    monkeypatch.setenv("BEACON_SECURITY_EXPORT_SECURITY_BYTES_PER_SECOND", "1000")
+    monkeypatch.setenv(
+        "BEACON_SECURITY_EXPORT_SECURITY_BYTES_PER_SECOND", "1000"
+    )
     monkeypatch.setattr(
         exporter,
         "_encode_record_result",
@@ -180,9 +188,14 @@ def test_byte_reserves_and_oversized_rejection_keep_total_bound(paused_exporter,
 
     emitted = drain(exporter, monkeypatch, late)
     assert sum(len(body.encode()) for _, body, _ in emitted) == 1000
-    assert "request-100" in [record["occurrence_id"] for record, _, _ in emitted]
+    assert "request-100" in [
+        record["occurrence_id"] for record, _, _ in emitted
+    ]
     assert exporter.delivery()["counters"]["security.budget_exceeded"] == 2
-    assert exporter.delivery()["counters"]["security.priority_1.budget_exceeded"] == 1
+    assert (
+        exporter.delivery()["counters"]["security.priority_1.budget_exceeded"]
+        == 1
+    )
 
 
 def test_budget_resets_on_next_second(paused_exporter, monkeypatch):
@@ -197,7 +210,9 @@ def test_budget_resets_on_next_second(paused_exporter, monkeypatch):
             return getattr(time, name)
 
     monkeypatch.setattr(module, "time", Clock())
-    monkeypatch.setenv("BEACON_SECURITY_EXPORT_SECURITY_EVENTS_PER_SECOND", "5")
+    monkeypatch.setenv(
+        "BEACON_SECURITY_EXPORT_SECURITY_EVENTS_PER_SECOND", "5"
+    )
     for index in range(6):
         exporter.emit(event(index))
 
@@ -215,7 +230,9 @@ def test_concurrent_producers_remain_bounded_and_flush_accounting_is_exact(
     with ThreadPoolExecutor(max_workers=8) as pool:
         list(
             pool.map(
-                lambda index: exporter.emit(event(index, 2 if index % 5 == 0 else 0)),
+                lambda index: exporter.emit(
+                    event(index, 2 if index % 5 == 0 else 0)
+                ),
                 range(200),
             )
         )
@@ -227,12 +244,17 @@ def test_concurrent_producers_remain_bounded_and_flush_accounting_is_exact(
     while not exporter._security_queue.empty():
         entries.append(exporter._security_queue.get_nowait())
         exporter._security_queue.task_done()
-    assert all(entry.event["attack_evidence"]["status"] == "suspected" for entry in entries)
+    assert all(
+        entry.event["attack_evidence"]["status"] == "suspected"
+        for entry in entries
+    )
     assert len({entry.event["occurrence_id"] for entry in entries}) == retained
     assert exporter.flush(timeout=0)
 
 
-def test_eviction_invalidates_verification_run_of_the_discarded_event(paused_exporter, monkeypatch):
+def test_eviction_invalidates_verification_run_of_the_discarded_event(
+    paused_exporter, monkeypatch
+):
     from unittest.mock import Mock
 
     exporter = paused_exporter
@@ -248,14 +270,20 @@ def test_eviction_invalidates_verification_run_of_the_discarded_event(paused_exp
     assert record_loss.call_args.args[0]["occurrence_id"] == "request-1"
 
 
-def test_real_json_byte_budget_preserves_late_priority_records(paused_exporter, monkeypatch):
+def test_real_json_byte_budget_preserves_late_priority_records(
+    paused_exporter, monkeypatch
+):
     exporter = paused_exporter
     for index in range(1000, 1008):
         exporter.emit(event(index))
     first = exporter._security_queue.queue[0][0]
     size = len(exporter._encode_record(first.event))
-    monkeypatch.setenv("BEACON_SECURITY_EXPORT_SECURITY_BYTES_PER_SECOND", str(size * 10))
-    monkeypatch.setenv("BEACON_SECURITY_EXPORT_SECURITY_EVENTS_PER_SECOND", "1000")
+    monkeypatch.setenv(
+        "BEACON_SECURITY_EXPORT_SECURITY_BYTES_PER_SECOND", str(size * 10)
+    )
+    monkeypatch.setenv(
+        "BEACON_SECURITY_EXPORT_SECURITY_EVENTS_PER_SECOND", "1000"
+    )
 
     def late(count):
         if count == 6:
@@ -265,13 +293,19 @@ def test_real_json_byte_budget_preserves_late_priority_records(paused_exporter, 
     emitted = drain(exporter, monkeypatch, late)
     assert len(emitted) == 9
     assert sum(len(body.encode()) for _, body, _ in emitted) <= size * 10
-    assert "request-2000" in [record["occurrence_id"] for record, _, _ in emitted]
+    assert "request-2000" in [
+        record["occurrence_id"] for record, _, _ in emitted
+    ]
     assert exporter.delivery()["counters"]["security.budget_exceeded"] == 1
 
 
-def test_tiny_budget_reserves_priority_slots_without_exceeding_limit(paused_exporter, monkeypatch):
+def test_tiny_budget_reserves_priority_slots_without_exceeding_limit(
+    paused_exporter, monkeypatch
+):
     exporter = paused_exporter
-    monkeypatch.setenv("BEACON_SECURITY_EXPORT_SECURITY_EVENTS_PER_SECOND", "2")
+    monkeypatch.setenv(
+        "BEACON_SECURITY_EXPORT_SECURITY_EVENTS_PER_SECOND", "2"
+    )
     exporter.emit(event(1))
     exporter.emit(event(2, 2))
     exporter.emit(event(3, 1))
@@ -283,9 +317,13 @@ def test_tiny_budget_reserves_priority_slots_without_exceeding_limit(paused_expo
     assert exporter.delivery()["counters"]["security.budget_exceeded"] == 1
 
 
-def test_loss_diagnostics_never_enter_the_export_queue(paused_exporter, monkeypatch):
+def test_loss_diagnostics_never_enter_the_export_queue(
+    paused_exporter, monkeypatch
+):
     exporter = paused_exporter
-    monkeypatch.setenv("BEACON_SECURITY_EXPORT_SECURITY_EVENTS_PER_SECOND", "10")
+    monkeypatch.setenv(
+        "BEACON_SECURITY_EXPORT_SECURITY_EVENTS_PER_SECOND", "10"
+    )
     for index in range(12):
         record = event(index, 1)
         record["event_name"] = "beacon.security.export.dropped"

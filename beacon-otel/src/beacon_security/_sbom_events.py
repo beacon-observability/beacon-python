@@ -7,11 +7,15 @@ from .schema import event_record
 
 
 def component_identity(name: str, version: str) -> dict[str, str]:
-    pair = json.dumps([name, version], ensure_ascii=False, separators=(",", ":"))
+    pair = json.dumps(
+        [name, version], ensure_ascii=False, separators=(",", ":")
+    )
     return {
         "name": name,
         "version": version,
-        "hash": hashlib.md5(pair.encode("utf-8"), usedforsecurity=False).hexdigest(),
+        "hash": hashlib.md5(
+            pair.encode("utf-8"), usedforsecurity=False
+        ).hexdigest(),
     }
 
 
@@ -19,11 +23,14 @@ def dependency_snapshot(event, records, identity):
     unique = {}
     for record in records:
         if record.get("type") != "library" or not any(
-            item.get("name") == "beacon:security:sbom:loaded" and item.get("value") == "true"
+            item.get("name") == "beacon:security:sbom:loaded"
+            and item.get("value") == "true"
             for item in record.get("properties", ())
         ):
             continue
-        dependency = component_identity(record["name"], record.get("version", ""))
+        dependency = component_identity(
+            record["name"], record.get("version", "")
+        )
         unique[json.dumps(dependency, sort_keys=True)] = dependency
     rows = [unique[key] for key in sorted(unique)]
     envelope = event_record(
@@ -35,7 +42,9 @@ def dependency_snapshot(event, records, identity):
     )
 
     def encode(value: Any) -> bytes:
-        return json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        return json.dumps(
+            value, ensure_ascii=False, separators=(",", ":")
+        ).encode("utf-8")
 
     maximum = min(
         config.limit("beacon.security.evidence.max.bytes", 65536),

@@ -18,7 +18,9 @@ from .tracking import ByteBudget
 
 _STATE_KEY = context.create_key("BeaconSecurity-state")
 _LOCAL_STATE = contextvars.ContextVar("beacon_security_request", default=None)
-_SUPPRESSED = contextvars.ContextVar("beacon_security_suppressed", default=False)
+_SUPPRESSED = contextvars.ContextVar(
+    "beacon_security_suppressed", default=False
+)
 _runtime = None
 _lock = threading.RLock()
 _collecting = True
@@ -48,8 +50,12 @@ class Runtime:
         self.budget = ByteBudget()
         self.exporter = Exporter(self.identity, self.profile, self.output)
         self.inventory = None
-        if config.flag("beacon.security.enabled", False) and config.flag("beacon.security.sbom.enabled", True):
-            self.inventory = SbomInventory(self.identity, self.output, self._sbom_event)
+        if config.flag("beacon.security.enabled", False) and config.flag(
+            "beacon.security.sbom.enabled", True
+        ):
+            self.inventory = SbomInventory(
+                self.identity, self.output, self._sbom_event
+            )
             self.inventory.start()
         else:
             self.exporter.ledger.sbom({"status": "disabled"})
@@ -69,7 +75,9 @@ class Runtime:
         deadline = time.monotonic() + max(0.0, timeout)
         with suppress():
             if self.inventory is not None:
-                self.inventory.close(timeout=max(0.0, deadline - time.monotonic()))
+                self.inventory.close(
+                    timeout=max(0.0, deadline - time.monotonic())
+                )
             self.exporter.close(timeout=max(0.0, deadline - time.monotonic()))
 
 
@@ -77,7 +85,11 @@ def get_runtime() -> Runtime:
     global _runtime
     if _runtime is None or _runtime.pid != os.getpid() or _runtime.closed:
         with _lock, suppress():
-            if _runtime is None or _runtime.pid != os.getpid() or _runtime.closed:
+            if (
+                _runtime is None
+                or _runtime.pid != os.getpid()
+                or _runtime.closed
+            ):
                 _runtime = Runtime()
     return _runtime
 
@@ -90,7 +102,11 @@ def current_state() -> SecurityState | None:
         # Server instrumentation can replace the OTel Context with the remote
         # propagation context. The local request lifetime must survive that.
         state = _LOCAL_STATE.get()
-    if not isinstance(state, SecurityState) or state.closed or not state.collection_enabled:
+    if (
+        not isinstance(state, SecurityState)
+        or state.closed
+        or not state.collection_enabled
+    ):
         return None
     current = _runtime
     if current is not None and not current.exporter.ledger.enabled():
@@ -157,11 +173,15 @@ def end_request(state, error=None):
             span_context = None
             try:
                 _summarize(state)
-                span_context = span.get_span_context() if span is not None else None
+                span_context = (
+                    span.get_span_context() if span is not None else None
+                )
             except Exception:
                 current.exporter.ledger.count("span_summary_errors")
             for event in events:
-                current.exporter.emit(event, span_context=span_context, evidence=True)
+                current.exporter.emit(
+                    event, span_context=span_context, evidence=True
+                )
         except Exception:
             current.exporter.ledger.count("request_completion_errors")
         finally:
@@ -183,7 +203,9 @@ def _summarize(state):
         )
         span.set_attribute(
             "beacon.security.finding.ids",
-            list(dict.fromkeys(event["finding_id"] for event in state.pending)),
+            list(
+                dict.fromkeys(event["finding_id"] for event in state.pending)
+            ),
         )
         span.set_attribute(
             "beacon.security.occurrence.ids",
@@ -204,7 +226,9 @@ def source(value, kind, name, location=""):
                     try:
                         _summarize(state)
                     except Exception:
-                        get_runtime().exporter.ledger.count("span_summary_errors")
+                        get_runtime().exporter.ledger.count(
+                            "span_summary_errors"
+                        )
         except Exception as error:
             state.gap("source_capture_error:" + type(error).__name__)
     return value
@@ -238,7 +262,9 @@ def sink(
             if event is not None:
                 inventory = get_runtime().inventory
                 if inventory is not None:
-                    event["component"] = inventory.resolve(location.partition("#")[0])
+                    event["component"] = inventory.resolve(
+                        location.partition("#")[0]
+                    )
                 else:
                     event["component"] = {}
                 try:
@@ -262,7 +288,11 @@ def startup_gap(reason):
     if len(_startup_gaps) < 32 and reason not in _startup_gaps:
         _startup_gaps.add(reason)
         current = _runtime
-        if current is not None and not current.closed and current.pid == os.getpid():
+        if (
+            current is not None
+            and not current.closed
+            and current.pid == os.getpid()
+        ):
             current.exporter.ledger.count("instrumentation_failures")
 
 
@@ -316,7 +346,9 @@ async def aflush(timeout=1.5):
         return task.result()
     finally:
         if not task.done():
-            exporter.ledger.shutdown_delivery_uncertain("shutdown_flush_timeout")
+            exporter.ledger.shutdown_delivery_uncertain(
+                "shutdown_flush_timeout"
+            )
 
 
 def _after_fork():

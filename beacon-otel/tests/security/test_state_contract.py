@@ -121,7 +121,9 @@ def test_capture_recurses_into_containers_and_pydantic_fields(monkeypatch):
     assert state.marks(query)
     assert state.marks(nested)
     assert state.source_signatures["http.request.body|json.query"] == 1
-    assert state.source_signatures["http.request.body|json.nested.items[0]"] == 1
+    assert (
+        state.source_signatures["http.request.body|json.nested.items[0]"] == 1
+    )
 
 
 def test_capture_marks_numeric_and_custom_fields_unmodeled_without_tainting_conversions(
@@ -140,12 +142,17 @@ def test_capture_marks_numeric_and_custom_fields_unmodeled_without_tainting_conv
         custom: CustomValue
 
     state = make_state(monkeypatch)
-    payload = Payload(query=value("typed-query"), count=7, custom=CustomValue())
+    payload = Payload(
+        query=value("typed-query"), count=7, custom=CustomValue()
+    )
 
     assert state.capture(payload, "http.request.body", "json") is payload
     assert state.marks(payload.query)
     converted = str(payload.count)
-    assert state.propagate(converted, (payload.count,), "str", exact=False) is converted
+    assert (
+        state.propagate(converted, (payload.count,), "str", exact=False)
+        is converted
+    )
     assert state.marks(converted) == ()
     assert "unmodeled_source_value:int" in state.gaps
     assert "unmodeled_source_value:CustomValue" in state.gaps
@@ -159,7 +166,9 @@ def test_propagation_preserves_result_identity_and_ranges(monkeypatch):
     marks = state.marks(query)
     result = query.upper()
 
-    assert state.propagate(result, (query,), "str.upper", exact=False) is result
+    assert (
+        state.propagate(result, (query,), "str.upper", exact=False) is result
+    )
     derived = state.marks(result)
     assert derived and not derived[0].exact
     assert derived[0].start == 0 and derived[0].end == len(result)
@@ -219,7 +228,9 @@ def test_sink_emits_no_raw_value_and_parameterized_empty_marks_are_negative(
 
 
 def test_request_and_process_tracking_budgets_are_separate(monkeypatch):
-    request_limited = make_state(monkeypatch, BEACON_SECURITY_MAX_TRACKED_BYTES=1)
+    request_limited = make_state(
+        monkeypatch, BEACON_SECURITY_MAX_TRACKED_BYTES=1
+    )
     query = value("request-budget")
     request_limited.source(query, "http.request.parameter", "q")
     assert request_limited.truncated
@@ -230,7 +241,9 @@ def test_request_and_process_tracking_budgets_are_separate(monkeypatch):
         BEACON_SECURITY_MAX_TRACKED_BYTES=1024 * 1024,
         BEACON_SECURITY_MAX_PROCESS_TRACKED_BYTES=1,
     )
-    process_limited.source(value("process-budget"), "http.request.parameter", "q")
+    process_limited.source(
+        value("process-budget"), "http.request.parameter", "q"
+    )
     assert process_limited.truncated
     assert "process_retained_byte_limit" in process_limited.gaps
 
@@ -243,8 +256,12 @@ def test_process_budget_exhaustion_is_sticky_after_other_request_releases(
     second = value("second-process-budget")
     third = value("third-process-budget")
     budget.maximum = sys.getsizeof(first)
-    owner = SecurityState(identity={"application_id": "app-test"}, budget=budget)
-    blocked = SecurityState(identity={"application_id": "app-test"}, budget=budget)
+    owner = SecurityState(
+        identity={"application_id": "app-test"}, budget=budget
+    )
+    blocked = SecurityState(
+        identity={"application_id": "app-test"}, budget=budget
+    )
     owner.source(first, "http.request.parameter", "owner")
     blocked.source(second, "http.request.parameter", "blocked")
     assert blocked.tracking_exhausted
@@ -276,7 +293,9 @@ def test_source_signature_budget_uses_max_nodes(monkeypatch):
 
 def test_close_releases_process_budget_and_invalidates_marks(monkeypatch):
     budget = ByteBudget()
-    state = SecurityState(identity={"application_id": "app-test"}, budget=budget)
+    state = SecurityState(
+        identity={"application_id": "app-test"}, budget=budget
+    )
     query = value("close-query")
     state.source(query, "http.request.parameter", "q")
     assert budget.used > 0

@@ -120,7 +120,10 @@ class _PriorityBudget:
             amount -= take
 
     def admit(self, priority: int, size: int) -> bool:
-        if sum(self.events[: priority + 1]) < 1 or sum(self.bytes[: priority + 1]) < size:
+        if (
+            sum(self.events[: priority + 1]) < 1
+            or sum(self.bytes[: priority + 1]) < size
+        ):
             return False
         self._consume(self.events, priority, 1)
         self._consume(self.bytes, priority, size)
@@ -136,7 +139,9 @@ class Exporter:
         self.output = Path(output).expanduser().absolute()
         self.ledger = RuntimeLedger(self.identity, self.profile, self.output)
 
-        self._security_queue = _SecurityQueue(maxsize=config.limit("beacon.security.export.queue.size", 1024))
+        self._security_queue = _SecurityQueue(
+            maxsize=config.limit("beacon.security.export.queue.size", 1024)
+        )
         self._sbom_queue: queue.Queue[_Entry] = queue.Queue(
             maxsize=config.limit("beacon.security.export.sbom.queue.size", 256)
         )
@@ -157,12 +162,24 @@ class Exporter:
         self._last_otel_call = 0.0
         self._last_error = 0.0
 
-        local_output_enabled = config.flag("beacon.security.local-output.enabled", False)
+        local_output_enabled = config.flag(
+            "beacon.security.local-output.enabled", False
+        )
         configured_file = config.text("beacon.security.evidence.file", "")
-        self._file = Path(configured_file).expanduser().absolute() if configured_file else None
-        self._max_bytes = config.limit("beacon.security.evidence.max.bytes", 65536)
-        self._rotate_bytes = config.limit("beacon.security.evidence.file.max.bytes", 10 * 1024 * 1024)
-        self._backups = min(20, config.limit("beacon.security.evidence.file.backups", 3))
+        self._file = (
+            Path(configured_file).expanduser().absolute()
+            if configured_file
+            else None
+        )
+        self._max_bytes = config.limit(
+            "beacon.security.evidence.max.bytes", 65536
+        )
+        self._rotate_bytes = config.limit(
+            "beacon.security.evidence.file.max.bytes", 10 * 1024 * 1024
+        )
+        self._backups = min(
+            20, config.limit("beacon.security.evidence.file.backups", 3)
+        )
         self._writer = None
         self._file_bytes = 0
         self._writer_lock = threading.RLock()
@@ -211,18 +228,24 @@ class Exporter:
         """Enqueue one event without blocking or changing the caller's value."""
 
         try:
-            copied = project_event(event_record(dict(event), self.ledger.identity))
+            copied = project_event(
+                event_record(dict(event), self.ledger.identity)
+            )
         except BaseException:
             self._loss("beacon.security.invalid_event")
             return
         if copied is None:
             return
         try:
-            channel = "sbom" if copied.get("event_name") == INVENTORY else "security"
+            channel = (
+                "sbom" if copied.get("event_name") == INVENTORY else "security"
+            )
         except BaseException:
             self._loss("beacon.security.invalid_event")
             return
-        target = self._sbom_queue if channel == "sbom" else self._security_queue
+        target = (
+            self._sbom_queue if channel == "sbom" else self._security_queue
+        )
         frozen_context = self._freeze_context(span_context, copied)
         if not self._running:
             self._loss(channel + ".closed", copied)
@@ -257,8 +280,12 @@ class Exporter:
             "sbom_queue_depth": self._sbom_queue.qsize(),
             "last_file_write_at": self._stamp_millis(self._last_file_success),
             "last_otel_api_call_at": self._stamp_millis(self._last_otel_call),
-            "evidence_file": "disabled" if self._file is None else str(self._file),
-            "otel_logs_config": config.text("otel.logs.exporter", "agent_default"),
+            "evidence_file": "disabled"
+            if self._file is None
+            else str(self._file),
+            "otel_logs_config": config.text(
+                "otel.logs.exporter", "agent_default"
+            ),
             "backend_acknowledgement": "unknown",
             "otel_semantics": "api_emit_is_not_export_or_backend_ack",
             "delivery_guarantee": "bounded_best_effort_no_agent_replay",
@@ -270,10 +297,16 @@ class Exporter:
 
         deadline = time.monotonic() + max(0.0, timeout)
         while time.monotonic() < deadline:
-            if self._security_queue.unfinished_tasks == 0 and self._sbom_queue.unfinished_tasks == 0:
+            if (
+                self._security_queue.unfinished_tasks == 0
+                and self._sbom_queue.unfinished_tasks == 0
+            ):
                 return True
             time.sleep(0.01)
-        return self._security_queue.unfinished_tasks == 0 and self._sbom_queue.unfinished_tasks == 0
+        return (
+            self._security_queue.unfinished_tasks == 0
+            and self._sbom_queue.unfinished_tasks == 0
+        )
 
     def start_flush(self, deadline: float, *, close: bool = False) -> Future:
         with self._close_lock:
@@ -282,7 +315,9 @@ class Exporter:
                     self._close_deadline = deadline
                 self._closing = True
                 self._monitor_stop.set()
-            if self._flush_task is not None and (not self._flush_task.done() or self._closed):
+            if self._flush_task is not None and (
+                not self._flush_task.done() or self._closed
+            ):
                 return self._flush_task
             task = self._flush_task = Future()
             # One reusable in-flight operation: stalled filesystem/SDK calls may
@@ -317,15 +352,26 @@ class Exporter:
                 if remaining() > 0:
                     from opentelemetry._logs import get_logger_provider
 
-                    provider_flush = getattr(get_logger_provider(), "force_flush", None)
+                    provider_flush = getattr(
+                        get_logger_provider(), "force_flush", None
+                    )
                     if provider_flush is not None:
-                        drained = provider_flush(timeout_millis=max(1, int(remaining() * 1000))) and drained
+                        drained = (
+                            provider_flush(
+                                timeout_millis=max(1, int(remaining() * 1000))
+                            )
+                            and drained
+                        )
                 drained = bool(drained and remaining() > 0)
                 if not drained:
-                    self.ledger.shutdown_delivery_uncertain("shutdown_flush_incomplete")
+                    self.ledger.shutdown_delivery_uncertain(
+                        "shutdown_flush_incomplete"
+                    )
             except BaseException:
                 drained = False
-                self.ledger.shutdown_delivery_uncertain("shutdown_flush_errors")
+                self.ledger.shutdown_delivery_uncertain(
+                    "shutdown_flush_errors"
+                )
             try:
                 self.ledger.tick(
                     self.delivery(),
@@ -335,7 +381,9 @@ class Exporter:
                 )
             except BaseException:
                 drained = False
-                self.ledger.shutdown_delivery_uncertain("shutdown_flush_errors")
+                self.ledger.shutdown_delivery_uncertain(
+                    "shutdown_flush_errors"
+                )
             drained = bool(drained and remaining() > 0)
             with self._close_lock:
                 if not self._closing:
@@ -366,7 +414,9 @@ class Exporter:
                 )
             except BaseException:
                 drained = False
-                self.ledger.shutdown_delivery_uncertain("shutdown_close_errors")
+                self.ledger.shutdown_delivery_uncertain(
+                    "shutdown_close_errors"
+                )
             finally:
                 with self._close_lock:
                     self._closed = True
@@ -393,7 +443,9 @@ class Exporter:
             if self._monitor_stop.wait(1.0):
                 return
 
-    def _run_channel(self, channel_queue: queue.Queue[_Entry], channel: str) -> None:
+    def _run_channel(
+        self, channel_queue: queue.Queue[_Entry], channel: str
+    ) -> None:
         events_limit = config.limit(
             "beacon.security.export." + channel + ".events-per-second",
             100 if channel == "security" else 200,
@@ -417,21 +469,33 @@ class Exporter:
                     second = now_second
                     events = 0
                     bytes_used = 0
-                    priority_budget = _PriorityBudget(events_limit, bytes_limit)
+                    priority_budget = _PriorityBudget(
+                        events_limit, bytes_limit
+                    )
                 encoded, truncated = self._encode_record_result(entry.event)
                 if truncated:
                     self._record_record_truncation(entry.event, channel)
-                if channel == "security" and not priority_budget.admit(entry.priority, len(encoded)):
-                    self._count(f"security.priority_{entry.priority}.budget_exceeded")
+                if channel == "security" and not priority_budget.admit(
+                    entry.priority, len(encoded)
+                ):
+                    self._count(
+                        f"security.priority_{entry.priority}.budget_exceeded"
+                    )
                     self._loss("security.budget_exceeded", entry.event)
                     continue
-                if channel != "security" and (events >= events_limit or bytes_used + len(encoded) > bytes_limit):
+                if channel != "security" and (
+                    events >= events_limit
+                    or bytes_used + len(encoded) > bytes_limit
+                ):
                     if channel != "sbom" or len(encoded) > bytes_limit:
                         self._loss(channel + ".budget_exceeded", entry.event)
                         continue
                     self._count("sbom.budget_deferred")
                     while int(time.monotonic()) == second:
-                        if self._close_deadline is not None and time.monotonic() >= self._close_deadline:
+                        if (
+                            self._close_deadline is not None
+                            and time.monotonic() >= self._close_deadline
+                        ):
                             self._loss("sbom.shutdown_pending", entry.event)
                             return
                         time.sleep(0.025)
@@ -499,7 +563,9 @@ class Exporter:
     def _encode_record(self, event: Mapping[str, Any]) -> bytes:
         return self._encode_record_result(event)[0]
 
-    def _encode_record_result(self, event: Mapping[str, Any]) -> tuple[bytes, bool]:
+    def _encode_record_result(
+        self, event: Mapping[str, Any]
+    ) -> tuple[bytes, bool]:
         encoded = _encode_json(event)
         if len(encoded) <= self._max_bytes:
             return encoded, False
@@ -524,7 +590,9 @@ class Exporter:
         if self._file is None:
             return
         self._file.parent.mkdir(parents=True, exist_ok=True)
-        self._file_bytes = self._file.stat().st_size if self._file.exists() else 0
+        self._file_bytes = (
+            self._file.stat().st_size if self._file.exists() else 0
+        )
         self._writer = self._file.open("a", encoding="utf-8")
 
     def _rotate(self) -> None:
@@ -533,7 +601,11 @@ class Exporter:
         self._close_writer()
         for index in range(self._backups, 0, -1):
             destination = Path(str(self._file) + "." + str(index))
-            source = self._file if index == 1 else Path(str(self._file) + "." + str(index - 1))
+            source = (
+                self._file
+                if index == 1
+                else Path(str(self._file) + "." + str(index - 1))
+            )
             if source.exists():
                 os.replace(source, destination)
         self._open_writer()
@@ -548,7 +620,9 @@ class Exporter:
                 except BaseException:
                     pass
 
-    def _loss(self, reason: str, event: Mapping[str, Any] | None = None) -> None:
+    def _loss(
+        self, reason: str, event: Mapping[str, Any] | None = None
+    ) -> None:
         channel = "sbom" if str(reason).startswith("sbom.") else "security"
         with self._loss_lock:
             self._dropped += 1
@@ -561,7 +635,9 @@ class Exporter:
             except BaseException:
                 pass
 
-    def _record_delivery_failure(self, event: Mapping[str, Any] | None = None) -> None:
+    def _record_delivery_failure(
+        self, event: Mapping[str, Any] | None = None
+    ) -> None:
         if not self._is_security_event(event):
             return
         try:
@@ -570,7 +646,9 @@ class Exporter:
         except BaseException:
             pass
 
-    def _record_record_truncation(self, event: Mapping[str, Any], channel: str) -> None:
+    def _record_record_truncation(
+        self, event: Mapping[str, Any], channel: str
+    ) -> None:
         self._count(channel + ".record_truncated")
         if channel != "security":
             return
@@ -580,7 +658,9 @@ class Exporter:
         except BaseException:
             pass
 
-    def _discard_pending(self, channel_queue: queue.Queue[_Entry], channel: str) -> None:
+    def _discard_pending(
+        self, channel_queue: queue.Queue[_Entry], channel: str
+    ) -> None:
         pending: list[_Entry] = []
         while True:
             try:
@@ -627,7 +707,9 @@ class Exporter:
     def _stamp_millis(value: float) -> str | None:
         if not value:
             return None
-        return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(value)) + ".%03dZ" % int((value - int(value)) * 1000)
+        return time.strftime(
+            "%Y-%m-%dT%H:%M:%S", time.gmtime(value)
+        ) + ".%03dZ" % int((value - int(value)) * 1000)
 
     @staticmethod
     def _is_security_event(event: Mapping[str, Any] | None) -> bool:
@@ -651,7 +733,9 @@ class Exporter:
         except BaseException:
             return None
 
-    def _emit_otel(self, body: str, event: Mapping[str, Any], span_context: Any) -> None:
+    def _emit_otel(
+        self, body: str, event: Mapping[str, Any], span_context: Any
+    ) -> None:
         logger = self._otel_logger
         if logger is None:
             raise RuntimeError("otel_logs_unavailable")
@@ -694,7 +778,11 @@ class Exporter:
             # ``LogRecord`` falls back to the worker's current context when
             # handed a falsy Context.  Keep the bridge explicit even for a
             # record without valid trace IDs.
-            return span_context if span_context else set_span_in_context(INVALID_SPAN, Context())
+            return (
+                span_context
+                if span_context
+                else set_span_in_context(INVALID_SPAN, Context())
+            )
         candidate = span_context
         if candidate is not None and not isinstance(candidate, SpanContext):
             getter = getattr(candidate, "get_span_context", None)
@@ -739,7 +827,10 @@ class Exporter:
             span_text = str(span_id or "").lower()
             if len(trace_text) != 32 or len(span_text) != 16:
                 return None
-            if any(char not in "0123456789abcdef" for char in trace_text + span_text):
+            if any(
+                char not in "0123456789abcdef"
+                for char in trace_text + span_text
+            ):
                 return None
             return span_context_type(
                 trace_id=int(trace_text, 16),
