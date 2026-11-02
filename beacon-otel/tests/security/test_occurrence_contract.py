@@ -29,6 +29,7 @@ IDENTITY = {
 
 
 def configure(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("BEACON_SECURITY_EXPORT_NO_EVIDENCE_ENABLED", "true")
     monkeypatch.setenv("BEACON_SECURITY_ENABLED", "true")
     monkeypatch.setenv("BEACON_SECURITY_PYTHON_INCLUDE", "security_sample")
     monkeypatch.setenv("BEACON_SECURITY_LOCAL_OUTPUT_ENABLED", "false")
@@ -143,9 +144,10 @@ def test_concurrent_requests_are_independent(monkeypatch, tmp_path) -> None:
     ]
 
 
+@pytest.mark.parametrize("include_no_evidence", [False, True])
 @pytest.mark.parametrize("fragments", [None, ("12", "1 OR 1=1", "14")])
 def test_lightweight_occurrences_reach_otlp_http(
-    monkeypatch, tmp_path, fragments
+    monkeypatch, tmp_path, fragments, include_no_evidence
 ) -> None:
     from beacon_security.exporter import Exporter
 
@@ -159,6 +161,10 @@ def test_lightweight_occurrences_reach_otlp_http(
     from opentelemetry.sdk._logs.export import SimpleLogRecordProcessor
 
     configure(monkeypatch, tmp_path)
+    monkeypatch.setenv(
+        "BEACON_SECURITY_EXPORT_NO_EVIDENCE_ENABLED",
+        str(include_no_evidence).lower(),
+    )
     received = []
 
     class Receiver(BaseHTTPRequestHandler):
@@ -212,33 +218,33 @@ def test_lightweight_occurrences_reach_otlp_http(
             if json.loads(log.body.string_value).get("event_name")
             == "beacon.security.finding"
         ]
-        assert len(findings) == 3
+        indices = (1, 2, 3) if include_no_evidence or not fragments else (2,)
+        assert len(findings) == len(indices)
         for _, body in findings:
             _VALIDATOR.validate(body)
         # Delivery can prioritize suspected records across requests. Compare
         # each occurrence by its own trace identity, not global FIFO order.
         findings.sort(key=lambda item: item[1]["trace_id"])
         assert len({event["finding_id"] for _, event in findings}) == 1
-        assert len({event["occurrence_id"] for _, event in findings}) == 3
+        assert len({event["occurrence_id"] for _, event in findings}) == len(
+            indices
+        )
         assert [event["evidence_sampled"] for _, event in findings] == [
-            True,
-            bool(fragments),
-            False,
+            [True, bool(fragments), False][index - 1] for index in indices
         ]
         if fragments:
             assert [
                 event["attack_evidence"]["status"] for _, event in findings
             ] == [
-                "no_evidence",
-                "suspected",
-                "no_evidence",
+                ["no_evidence", "suspected", "no_evidence"][index - 1]
+                for index in indices
             ]
             assert all(
                 set(event["attack_evidence"]) == {"status", "reason"}
                 for _, event in findings
             )
         assert [log.trace_id.hex() for log, _ in findings] == [
-            f"{index:032x}" for index in (1, 2, 3)
+            f"{index:032x}" for index in indices
         ]
         for _, event in findings:
             assert "trace_availability" not in event

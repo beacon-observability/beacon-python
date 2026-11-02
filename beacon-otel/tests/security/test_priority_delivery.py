@@ -38,6 +38,7 @@ def event(index, priority=0, size=100):
 
 @pytest.fixture
 def paused_exporter(monkeypatch, tmp_path):
+    monkeypatch.setenv("BEACON_SECURITY_EXPORT_NO_EVIDENCE_ENABLED", "true")
     monkeypatch.setenv("BEACON_SECURITY_ENABLED", "true")
     monkeypatch.setenv("BEACON_SECURITY_PYTHON_INCLUDE", "security_sample")
     monkeypatch.setenv("BEACON_SECURITY_LOCAL_OUTPUT_ENABLED", "false")

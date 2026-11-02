@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.2.4 (2026-11-02)
+
+- Exclude `no_evidence` Security findings from event export by default. Set
+  `BEACON_SECURITY_EXPORT_NO_EVIDENCE_ENABLED=true` to restore their export;
+  retain `unknown`, `suspected`, and request-level evidence upgrades.
+
 ## 1.2.3 (2026-10-30)
 
 - Converge Python Security telemetry on schema v2 while preserving fingerprint v1.
