@@ -236,6 +236,14 @@ class Exporter:
             return
         if copied is None:
             return
+        if (
+            copied.get("event_name") == FINDING
+            and copied["attack_evidence"]["status"] == "no_evidence"
+            and not config.flag(
+                "beacon.security.export.no-evidence.enabled", False
+            )
+        ):
+            return
         try:
             channel = (
                 "sbom" if copied.get("event_name") == INVENTORY else "security"

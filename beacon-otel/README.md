@@ -208,3 +208,14 @@ a weaker request cannot replace a stronger representative.
 `attack_evidence_counts` partitions process-local request occurrences by the
 three statuses, and `strongest_attack_evidence` describes the strongest retained
 status. These counters do not represent confirmed attacks or exploit successes.
+
+### Exporting findings without attack evidence
+
+Findings with `attack_evidence.status=no_evidence` are excluded from OpenTelemetry Logs and
+the evidence JSONL stream by default. Set `BEACON_SECURITY_EXPORT_NO_EVIDENCE_ENABLED=true`
+to include them. `unknown` and `suspected` remain eligible for export, and SBOM inventories
+are unaffected. Filtering happens before queue admission and is not counted as export loss.
+Detection, request deduplication, and stronger evidence upgrades still run; optional local
+finding snapshots and span summaries can retain observations excluded from event export.
+This changes the previous default, which exported all three statuses. `no_evidence` remains
+a classification, not a safety verdict.

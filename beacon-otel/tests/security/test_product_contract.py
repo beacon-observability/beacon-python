@@ -339,6 +339,7 @@ def test_run_counter_budget_is_shared_across_runs_and_keeps_existing_counts(
 
 def _configure_exporter_env(monkeypatch, tmp_path, **values):
     defaults = {
+        "BEACON_SECURITY_EXPORT_NO_EVIDENCE_ENABLED": "true",
         "BEACON_SECURITY_ENABLED": "true",
         "BEACON_SECURITY_PYTHON_INCLUDE": "security_sample",
         "BEACON_SECURITY_PYTHON_EXCLUDE": "",
