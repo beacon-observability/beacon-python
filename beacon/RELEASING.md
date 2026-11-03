@@ -30,3 +30,15 @@ Before a stable release, define and validate the following in this repository:
 5. Maintain release notes, known limitations, and versioned usage documentation for every version. After release, update the Python installation and release entry points in the product repository.
 
 Each language is released independently. Beacon Python does not need to stay in lockstep with Beacon Java or Go, and passing local tests does not constitute release acceptance.
+
+## Container distribution
+
+After stable public-package and GitHub Release acceptance, manually run the
+[container distribution workflow](docker/python/README.md#build-and-publish)
+from `main` with the existing product version. Routine image releases need no
+source changes or version-bump PR. One preparation job verifies the public
+artifacts and generates a shared dependency lock; native amd64/arm64 jobs consume
+that exact snapshot. The protected `beacon-release` job promotes the tested image
+archives without rebuilding or republishing packages. Version tags cannot be
+overwritten. Dependency locks and provenance are retained in the images; the
+checksummed build-context artifact is retained for 90 days and reused on reruns.

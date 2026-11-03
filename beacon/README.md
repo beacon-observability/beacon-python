@@ -34,3 +34,5 @@ uvx --from uv==0.12.1 uv run --frozen --package beacon-profiling --with pytest p
 ```
 
 The repository currently provides `beacon-otel`, the `beacon` command, and `beacon-profiling`. Security is embedded in `beacon-otel`, remains disabled by default, and does not create local files unless explicitly enabled. Release `1.2.3` follows the pinned Security schema v2 and fingerprint v1 contract. Its migration and contract provenance are recorded in [`security-migration.lock.json`](security-migration.lock.json), while language-specific use and Kubernetes configuration are documented in the [`beacon-otel` README](../beacon-otel/README.md#beacon-security). The default profile export interval is configurable and set to 60 seconds. See [`validation/1.2.3.md`](validation/1.2.3.md) for the current public release verification and [`validation/0.1.0rc2.md`](validation/0.1.0rc2.md) for backend evidence. The legacy `gtrace` distribution has been removed from this repository. Inherited upstream or legacy-repository release workflows must not be treated as Beacon release entry points.
+
+- [Container distribution](docker/python/README.md)

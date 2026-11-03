@@ -1,0 +1,190 @@
+name: Beacon Python image
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/beacon-image.yml
+      - beacon/docker/python/**
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Existing stable Beacon Python release version (X.Y.Z, without v)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: beacon-python-image-${{ github.event.pull_request.number || inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.repository == 'beacon-observability/beacon-python'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.snapshot.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: '0.12.1'
+          enable-cache: false
+      - name: Prepare one shared dependency snapshot, or reuse it on rerun
+        id: snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # A fixed acceptance fixture; normal releases only supply the input.
+          VERSION: ${{ inputs.version || '1.2.4' }}
+        shell: bash
+        run: |
+          [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          mkdir snapshot
+          existing=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100" \
+            --jq '[.artifacts[] | select(.name == "beacon-python-build-context" and .expired == false)] | length')
+          if [[ "$existing" != 0 ]]; then
+            gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+              --name beacon-python-build-context --dir snapshot
+            (cd snapshot && sha256sum -c context.sha256)
+            tar -xzf snapshot/context.tar.gz
+            [[ $(jq -r .version release-image/provenance.json) == "$VERSION" ]]
+            echo 'reused=true' >> "$GITHUB_OUTPUT"
+          else
+            python3 beacon/docker/python/prepare.py "$VERSION" release-image
+            tar -czf snapshot/context.tar.gz release-image
+            (cd snapshot && sha256sum context.tar.gz > context.sha256)
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: steps.snapshot.outputs.reused != 'true'
+        with:
+          name: beacon-python-build-context
+          path: snapshot/
+          if-no-files-found: error
+          retention-days: 90
+
+  candidate:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: beacon-python-build-context
+          path: snapshot
+      - name: Restore the shared build context
+        run: |
+          (cd snapshot && sha256sum -c context.sha256)
+          tar -xzf snapshot/context.tar.gz
+      - name: Install image archive tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes skopeo
+      - name: Build and test the native candidate once
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          source=$(jq -r .source_commit release-image/provenance.json)
+          docker build --pull --platform "linux/$ARCH" \
+            -f release-image/Dockerfile \
+            --build-arg "BEACON_VERSION=$VERSION" \
+            --build-arg "BEACON_SOURCE_REVISION=$source" \
+            -t beacon-python-candidate release-image
+          # Materialize compressed registry layers before testing and promotion.
+          skopeo copy --format v2s2 --dest-compress \
+            docker-daemon:beacon-python-candidate:latest "dir:beacon-python-$ARCH"
+          skopeo copy "dir:beacon-python-$ARCH" docker-daemon:beacon-python-verified:latest
+          bash beacon/docker/python/verify-image.sh beacon-python-verified "$VERSION"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: beacon-python-image-${{ matrix.arch }}
+          path: beacon-python-${{ matrix.arch }}/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: beacon-release
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: beacon-python-image-*
+          path: image-candidates
+      - name: Install image promotion tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes skopeo
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Promote verified archives without rebuilding or architecture tags
+        env:
+          VERSION: ${{ inputs.version }}
+          IMAGE: ghcr.io/beacon-observability/beacon-python
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          # GHCR denies anonymous registry reads before a package's first publication.
+          # Use the authenticated package API; accept only an explicit 404 as absence.
+          if gh api --paginate --slurp \
+            'orgs/beacon-observability/packages/container/beacon-python/versions?per_page=100' \
+            > existing-versions.json 2> existing-image.err; then
+            if jq -e --arg version "$VERSION" \
+              '[.[][] | .metadata.container.tags[]] | index($version) != null' existing-versions.json; then
+              echo "Refusing to overwrite $IMAGE:$VERSION" >&2
+              exit 1
+            fi
+          elif ! grep -Fq '(HTTP 404)' existing-image.err; then
+            cat existing-image.err >&2
+            exit 1
+          fi
+          references=()
+          for arch in amd64 arm64; do
+            archive="image-candidates/beacon-python-image-$arch"
+            skopeo inspect "dir:$archive" > candidate.json
+            [[ "$(jq -r .Architecture candidate.json)" == "$arch" ]]
+            [[ "$(jq -r '.Labels["org.opencontainers.image.version"]' candidate.json)" == "$VERSION" ]]
+            digest=$(jq -r .Digest candidate.json)
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            skopeo copy --preserve-digests "dir:$archive" "docker://$IMAGE@$digest"
+            references+=("$IMAGE@$digest")
+          done
+          docker manifest create "$IMAGE:$VERSION" "${references[@]}"
+          docker manifest push "$IMAGE:$VERSION"
+          docker buildx imagetools inspect "$IMAGE:$VERSION" | tee image-manifest.txt
+          {
+            echo '### Beacon Python image'
+            echo "\`$IMAGE:$VERSION\`"
+            echo '```text'
+            cat image-manifest.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
