@@ -48,31 +48,36 @@ using it as a cross-runtime initContainer is outside this initial scope.
 ## Build and publish
 
 1. Accept the stable public PyPI packages and matching GitHub Release first.
-2. Update `requirements.in` and regenerate `requirements.lock` using the public
-   index. Commit and review the dependency lock before publication:
-
-   ```bash
-   uv --no-config pip compile beacon/docker/python/requirements.in \
-     --python-version 3.13 --universal --generate-hashes --no-emit-index-url \
-     --index-url https://pypi.org/simple \
-     --output-file beacon/docker/python/requirements.lock
-   ```
-
-3. Configure the `beacon-release` GitHub environment to require maintainer review
-   and permit only `main`. Run **Beacon Python image** on `main` with the matching
-   `X.Y.Z` input. Preparation compares both public wheel hashes and bytes with
-   the stable GitHub Release attachments and records the exact source commit.
+2. Run **Beacon Python image** from `main` with the existing `X.Y.Z` input. No source
+   files, dependency locks, workflow defaults, or examples need updating for a
+   routine version release. The `beacon-release` environment permits only `main`
+   and requires maintainer approval.
+3. One preparation job compares both public wheel hashes and bytes with the stable
+   Release attachments, records the exact source commit, and uses uv to generate
+   one universal CPython 3.13 dependency lock with hashes. Both architecture jobs
+   consume the same checksummed Dockerfile and build-context snapshot.
 4. Native amd64/arm64 jobs install only hash-locked binary wheels, then verify
    installed Beacon files, version, correlated OTLP HTTP/protobuf client traces,
    disabled optional features, pprof multipart uploads, and opt-in Security SBOM
    delivery. Tests run as non-root with a read-only root filesystem and no external
    network. This establishes local protocol behavior, not DataKit qualification
    or additional Security finding coverage.
-5. Approve the protected environment. The workflow promotes the tested compressed
-   image archives without rebuilding and rejects an existing version tag.
+5. Review the snapshot and results, then approve the protected environment. It
+   promotes the tested image archives without rebuilding and rejects existing tags.
 6. On first publication, set the GHCR package visibility to Public. Verify an
-   anonymous pull of the multi-platform manifest and rerun the image smoke test
-   against the published digest. Record workflow, digests, and actual scope.
+   anonymous pull of the manifest and repeat the smoke test against its digest.
+
+The preparation job's build-context artifact is retained for 90 days, including
+its SHA-256 checksum, generated dependency lock, original public Beacon packages,
+Dockerfile and provenance. Rerunning failed candidate jobs uses that artifact;
+rerunning all jobs also reuses an existing unexpired snapshot from the same run.
+A new workflow run resolves a new snapshot, so specifying the same product version
+alone does not promise identical transitive dependencies. For a later rebuild,
+download and verify the retained snapshot instead of resolving again. The final
+image also preserves the dependency lock and public Beacon artifacts. PR smoke
+versions and installation examples are fixed fixtures, not a moving release selector.
+Change the image implementation through PRs when packaging, runtime or validation
+needs change.
 
 PRs changing this directory build and test both architectures but never publish.
 Publication uses the workflow's `GITHUB_TOKEN` with package write permission;
@@ -80,12 +85,12 @@ no PyPI credentials are needed. Interrupted untagged uploads may be retried.
 Rollback uses the previous accepted image digest, or the previous accepted public
 packages; immutable version tags are never moved.
 
-Local build requires Python 3.13, GitHub CLI, and Docker:
+Local build requires Python 3.13, uv, GitHub CLI, curl, and Docker:
 
 ```bash
 python3 beacon/docker/python/prepare.py 1.2.4 /tmp/beacon-python-release
 source=$(python3 -c 'import json; print(json.load(open("/tmp/beacon-python-release/provenance.json"))["source_commit"])')
-docker build -f beacon/docker/python/Dockerfile \
+docker build -f /tmp/beacon-python-release/Dockerfile \
   --build-arg BEACON_VERSION=1.2.4 --build-arg "BEACON_SOURCE_REVISION=$source" \
   -t beacon-python-candidate /tmp/beacon-python-release
 bash beacon/docker/python/verify-image.sh beacon-python-candidate 1.2.4

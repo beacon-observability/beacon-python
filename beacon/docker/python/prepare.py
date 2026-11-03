@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -37,9 +36,6 @@ def download(url: str) -> bytes:
 def main() -> None:
     version, target = sys.argv[1:]
     assert re.fullmatch(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", version)
-    assert (HERE / "requirements.in").read_text().strip() == (
-        f"beacon-otel[profiling,requests]=={version}"
-    )
     output = Path(target).resolve()
     output.mkdir(parents=True, exist_ok=True)
     assert not list(output.iterdir()), "Staging directory must be empty"
@@ -66,17 +62,12 @@ def main() -> None:
         public_bytes = download(wheel["url"])
         digest = hashlib.sha256(public_bytes).hexdigest()
         assert digest == wheel["digests"]["sha256"]
-        gh(
-            "release",
-            "download",
-            f"v{version}",
-            "--repo",
-            repo,
-            "--dir",
-            str(assets),
-            "--pattern",
-            filename,
+        asset = next(
+            item for item in release["assets"] if item["name"] == filename
         )
+        expected_url = f"https://github.com/{repo}/releases/download/v{version}/{filename}"
+        assert asset["browser_download_url"] == expected_url
+        (assets / filename).write_bytes(download(expected_url))
         assert (assets / filename).read_bytes() == public_bytes
         records.append(
             {
@@ -88,15 +79,41 @@ def main() -> None:
             }
         )
         print(f"Verified {filename}: {digest}", flush=True)
-    for name in ("requirements.in", "requirements.lock"):
-        shutil.copyfile(HERE / name, output / name)
+    (output / "requirements.in").write_text(
+        f"beacon-otel[profiling,requests]=={version}\n"
+    )
+    subprocess.check_call(
+        [
+            "uv",
+            "--no-config",
+            "pip",
+            "compile",
+            str(output / "requirements.in"),
+            "--python-version",
+            "3.13",
+            "--universal",
+            "--generate-hashes",
+            "--no-emit-index-url",
+            "--no-header",
+            "--no-annotate",
+            "--quiet",
+            "--index-url",
+            "https://pypi.org/simple",
+            "--output-file",
+            str(output / "requirements.lock"),
+        ]
+    )
+    (output / "Dockerfile").write_bytes((HERE / "Dockerfile").read_bytes())
     provenance = {
         "version": version,
         "source_commit": commit,
         "release": release["html_url"],
         "runtime": "CPython 3.13 / Debian bookworm glibc",
+        "resolver": subprocess.check_output(
+            ["uv", "--version"], text=True
+        ).strip(),
         "dependency_lock_sha256": hashlib.sha256(
-            (HERE / "requirements.lock").read_bytes()
+            (output / "requirements.lock").read_bytes()
         ).hexdigest(),
         "artifacts": records,
     }
