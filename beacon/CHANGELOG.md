@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Adopted the verified OpenTelemetry source snapshot `b6bb7bd5520845237464`; Beacon product version remains unchanged.
+- Adopted the verified OpenTelemetry source snapshot `b6bb7bd5520845237464`; Prepare Beacon 1.2.5 using the existing release workflow.
 
 ## 1.2.4 (2026-11-02)
 
