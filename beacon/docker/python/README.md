@@ -58,7 +58,7 @@ using it as a cross-runtime initContainer is outside this initial scope.
    consume the same checksummed Dockerfile and build-context snapshot.
 4. Native amd64/arm64 jobs install only hash-locked binary wheels, then verify
    installed Beacon files, version, correlated OTLP HTTP/protobuf client traces,
-   disabled optional features, pprof multipart uploads, and opt-in Security SBOM
+   disabled optional features, OTLP Profiles exports, and opt-in Security SBOM
    delivery. Tests run as non-root with a read-only root filesystem and no external
    network. This establishes local protocol behavior, not DataKit qualification
    or additional Security finding coverage.

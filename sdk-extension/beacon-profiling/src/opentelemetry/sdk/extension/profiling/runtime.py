@@ -62,21 +62,18 @@ from opentelemetry.sdk.extension.profiling.environment_variables import (
     OTEL_PROFILING_MEMORY_IGNORE_PROFILER,
     OTEL_PROFILING_MEMORY_INTERVAL,
     OTEL_PROFILING_MEMORY_TOP_STATS,
-    OTEL_PROFILING_PPROF_UPLOAD_URL,
     OTEL_PROFILING_SAMPLE_INTERVAL,
 )
 from opentelemetry.sdk.extension.profiling.export import (
-    CompatiblePPROFExporter,
     create_otlp_profile_exporter,
 )
-from opentelemetry.sdk.extension.profiling.export.pprof import (
-    PPROFProfileExporter,
+from opentelemetry.sdk.extension.profiling.export.file import (
+    FileProfileExporter,
 )
 from opentelemetry.sdk.extension.profiling.model.builder import (
     ProfilesRequestBuilder,
 )
 from opentelemetry.sdk.extension.profiling.model.pprof_builder import (
-    CompatiblePprofProfileBuilder,
     PprofProfileBuilder,
 )
 from opentelemetry.sdk.extension.profiling.scheduler import ProfileScheduler
@@ -89,7 +86,7 @@ _DEFAULT_EXPORT_INTERVAL_SECONDS = 60.0
 
 
 class Profiler:
-    _active_instance: "Profiler | None" = None
+    _active_instance: Profiler | None = None
     _active_lock = Lock()
 
     def __init__(
@@ -318,8 +315,7 @@ class Profiler:
             active = self.__class__._active_instance
             if active is not None and active is not self and active._started:
                 _logger.error(
-                    "A profiler is already running. Only one profiler "
-                    "instance can be active at a time."
+                    "A profiler is already running. Only one profiler instance can be active at a time."
                 )
                 return
             if self._started:
@@ -431,25 +427,11 @@ class Profiler:
             batch = self._samples.drain()
 
         resource = self._resolve_resource()
-        start_time_unix_nano = min(
-            sample.timestamp_unix_nano for sample in batch
-        )
-        end_time_unix_nano = max(
-            sample.timestamp_unix_nano for sample in batch
-        )
         payload = self._builder.build(
             samples=batch,
             resource=resource,
             sample_period_ns=int(self._sample_interval * 1_000_000_000),
         )
-        if isinstance(self._exporter, CompatiblePPROFExporter):
-            self._exporter.export(
-                payload,
-                resource=resource,
-                start_time_unix_nano=start_time_unix_nano,
-                end_time_unix_nano=end_time_unix_nano,
-            )
-            return
         self._exporter.export(payload)
 
     def force_flush(self) -> None:
@@ -465,27 +447,15 @@ class Profiler:
         return Resource.create()
 
     def _create_builder(self):
-        if isinstance(self._exporter, CompatiblePPROFExporter):
-            return CompatiblePprofProfileBuilder()
-        if isinstance(self._exporter, PPROFProfileExporter):
+        if isinstance(self._exporter, FileProfileExporter):
             return PprofProfileBuilder()
         return ProfilesRequestBuilder()
 
     @staticmethod
     def _create_exporter_from_env():
-        exporter_name = environ.get(OTEL_PROFILING_EXPORTER)
-        if exporter_name is None:
-            if environ.get(OTEL_PROFILING_PPROF_UPLOAD_URL):
-                return CompatiblePPROFExporter()
-            return create_otlp_profile_exporter()
-
-        exporter_name = exporter_name.strip()
-        if exporter_name == "none":
-            return None
-        if exporter_name == "pprof":
-            return PPROFProfileExporter()
-        if exporter_name == "pprof_http":
-            return CompatiblePPROFExporter()
+        exporter_name = environ.get(OTEL_PROFILING_EXPORTER, "otlp").strip()
+        if exporter_name == "file":
+            return FileProfileExporter()
         if exporter_name != "otlp":
             raise ValueError(
                 f"Unsupported profiling exporter '{exporter_name}'"
@@ -593,7 +563,7 @@ class Profiler:
             after_fork()
 
     @staticmethod
-    def _reset_after_fork(component) -> None:  # noqa: ANN001
+    def _reset_after_fork(component) -> None:
         reset = getattr(component, "reset_after_fork", None)
         if callable(reset):
             reset()

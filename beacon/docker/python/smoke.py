@@ -98,7 +98,10 @@ def main() -> None:
                     "OTEL_BSP_SCHEDULE_DELAY": "100",
                     "OTEL_BLRP_SCHEDULE_DELAY": "100",
                     "OTEL_PROFILING_EXPORT_INTERVAL": "1",
-                    "OTEL_PROFILING_PPROF_UPLOAD_URL": endpoint + "/profiles",
+                    "OTEL_PROFILING_EXPORTER": "otlp",
+                    "OTEL_EXPORTER_OTLP_PROFILES_PROTOCOL": "http/protobuf",
+                    "OTEL_EXPORTER_OTLP_PROFILES_ENDPOINT": endpoint
+                    + "/v1development/profiles",
                     "BEACON_SECURITY_PYTHON_INCLUDE": "fixture",
                     "BEACON_SECURITY_OUTPUT": scratch + "/security-output",
                 }
@@ -153,14 +156,14 @@ def main() -> None:
                 profiles = [
                     (kind, body)
                     for path, kind, body in received
-                    if path == "/profiles"
+                    if path == "/v1development/profiles"
                 ]
                 logs = [
                     body for path, _, body in received if path == "/v1/logs"
                 ]
                 if enabled:
                     assert any(
-                        "multipart/form-data" in kind and b".pprof" in body
+                        "application/x-protobuf" in kind and body
                         for kind, body in profiles
                     ), result.stderr
                     records = [

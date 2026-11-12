@@ -5,7 +5,7 @@ The current stable version is ``beacon-profiling==1.2.1``.
 
 This package provides a Python profiling runtime for OpenTelemetry
 auto-instrumentation. The current implementation exports profiles via OTLP
-or a compatible pprof endpoint and supports multiple collector types:
+or local pprof files and supports multiple collector types:
 
 * stack sampling
 * handled exceptions
@@ -50,7 +50,7 @@ Configuration
 The following environment variables are supported:
 
 * ``OTEL_PROFILING_ENABLED``
-* ``OTEL_PROFILING_EXPORTER`` (``otlp`` or ``pprof``)
+* ``OTEL_PROFILING_EXPORTER`` (``otlp`` or ``file``; defaults to ``otlp``)
 * ``OTEL_PROFILING_SAMPLE_INTERVAL``
 * ``OTEL_PROFILING_EXPORT_INTERVAL`` (defaults to 60 seconds and can be
   overridden by the ``Profiler(export_interval=...)`` argument)
@@ -79,11 +79,7 @@ The following environment variables are supported:
 * ``OTEL_EXPORTER_OTLP_PROFILES_CERTIFICATE``
 * ``OTEL_EXPORTER_OTLP_PROFILES_CLIENT_KEY``
 * ``OTEL_EXPORTER_OTLP_PROFILES_CLIENT_CERTIFICATE``
-* ``OTEL_PROFILING_PPROF_PATH``
-* ``OTEL_PROFILING_PPROF_MAX_FILES`` (HTTP upload local copies only; defaults
-  to 3 retained files per exporter instance)
-* ``OTEL_PROFILING_PPROF_UPLOAD_URL``
-* ``OTEL_PROFILING_PPROF_HEADERS``
+* ``OTEL_PROFILING_FILE_PATH`` (directory; defaults to ``otel-profiles``)
 
 Service metadata should be configured with standard OpenTelemetry
 resource settings such as ``OTEL_SERVICE_NAME`` and
@@ -131,30 +127,21 @@ To dump pprof files instead of OTLP, set:
 
 ::
 
-    export OTEL_PROFILING_EXPORTER=pprof
-    export OTEL_PROFILING_PPROF_PATH=/tmp/otel-profile
+    export OTEL_PROFILING_EXPORTER=file
+    export OTEL_PROFILING_FILE_PATH=/tmp/otel-profiles
 
-To POST pprof directly to a compatible agent endpoint and keep a local
-copy:
+The ``file`` exporter ignores all OTLP endpoint and transport settings.
+It writes gzip pprof files to the configured directory, without network uploads.
 
-::
+For OTLP/gRPC, set::
 
-    export OTEL_PROFILING_PPROF_UPLOAD_URL=http://localhost:9529/profiling/v1/input
-    export OTEL_PROFILING_PPROF_HEADERS="X-API-Key:xxx"
-    export OTEL_PROFILING_PPROF_PATH=/tmp/otel-profile
-    beacon python app.py
+    export OTEL_PROFILING_EXPORTER=otlp
+    export OTEL_EXPORTER_OTLP_PROFILES_PROTOCOL=grpc
+    export OTEL_EXPORTER_OTLP_PROFILES_ENDPOINT=http://localhost:4317
 
-HTTP upload does not write local files unless ``OTEL_PROFILING_PPROF_PATH``
-is set. An empty ``pprof_path`` argument disables copies even when that
-environment variable is set. Local write/cleanup failures are logged and do
-not prevent upload. Retention removes only files written by this exporter
-instance; it never scans or removes files owned by other processes. The
-file-only ``pprof`` exporter retains its existing output behavior.
-
-Capture and export exceptions are logged; subsequent scheduled captures
-and export attempts continue. Failed batches are not replayed automatically.
-
-When ``OTEL_PROFILING_EXPORTER`` is unset and
-``OTEL_PROFILING_PPROF_UPLOAD_URL`` is configured, the runtime
-defaults to a legacy-compatible ``pprof`` upload layout. Set
-``OTEL_PROFILING_EXPORTER=otlp`` to force OTLP profile export.
+OTLP/HTTP uses ``http/protobuf`` and an endpoint such as
+``http://localhost:4318/v1development/profiles``. Profile-specific OTLP
+settings take precedence over shared ``OTEL_EXPORTER_OTLP_*`` settings.
+Only ``otlp`` and ``file`` exporter identifiers are accepted; disable
+profiling with ``OTEL_PROFILING_ENABLED=false``. These source changes
+require a new Beacon release. The previous multipart pprof exporter is removed.
