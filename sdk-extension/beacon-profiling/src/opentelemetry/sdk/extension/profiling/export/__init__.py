@@ -12,11 +12,8 @@ from opentelemetry.sdk.extension.profiling.export.grpc import (
 from opentelemetry.sdk.extension.profiling.export.http import (
     OTLPHTTPProfileExporter,
 )
-from opentelemetry.sdk.extension.profiling.export.pprof_http import (
-    PPROFHTTPExporter as CompatiblePPROFExporter,
-)
 
-__all__ = ("CompatiblePPROFExporter", "create_otlp_profile_exporter")
+__all__ = ("create_otlp_profile_exporter",)
 
 
 def create_otlp_profile_exporter():

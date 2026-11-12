@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Breaking:** profiling exporter selection now accepts `otlp` and `file` only.
+  Remove pprof multipart uploads and endpoint-based exporter auto-selection.
+  Local file export uses the `OTEL_PROFILING_FILE_PATH` directory and ignores
+  OTLP endpoint settings. OTLP retains HTTP/protobuf and gRPC support.
+
 ## 1.2.4 (2026-11-02)
 
 - Exclude `no_evidence` Security findings from event export by default. Set

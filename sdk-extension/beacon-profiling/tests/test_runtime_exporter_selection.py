@@ -1,73 +1,48 @@
 from __future__ import annotations
 
-from opentelemetry.sdk.extension.profiling.export import (
-    CompatiblePPROFExporter,
-)
-from opentelemetry.sdk.extension.profiling.export.pprof import (
-    PPROFProfileExporter,
+import pytest
+
+from opentelemetry.sdk.extension.profiling.export.file import (
+    FileProfileExporter,
 )
 from opentelemetry.sdk.extension.profiling.model.pprof_builder import (
-    CompatiblePprofProfileBuilder,
     PprofProfileBuilder,
 )
 from opentelemetry.sdk.extension.profiling.runtime import Profiler
 
 
-def test_runtime_defaults_to_compatible_exporter_for_env_fallback(
-    monkeypatch,
-):
+def test_runtime_defaults_to_otlp(monkeypatch):
+    sentinel = object()
     monkeypatch.delenv("OTEL_PROFILING_EXPORTER", raising=False)
     monkeypatch.setenv(
-        "OTEL_PROFILING_PPROF_UPLOAD_URL",
-        "http://collector:9529/profiling/v1/input",
-    )
-
-    exporter = Profiler._create_exporter_from_env()
-
-    assert isinstance(exporter, CompatiblePPROFExporter)
-    exporter.shutdown()
-
-
-def test_runtime_explicit_otlp_exporter_overrides_env_fallback(
-    monkeypatch,
-):
-    sentinel = object()
-    monkeypatch.setenv("OTEL_PROFILING_EXPORTER", "otlp")
-    monkeypatch.setenv(
-        "OTEL_PROFILING_PPROF_UPLOAD_URL",
-        "http://collector:9529/profiling/v1/input",
+        "OTEL_PROFILING_PPROF_UPLOAD_URL", "invalid old endpoint"
     )
     monkeypatch.setattr(
         "opentelemetry.sdk.extension.profiling.runtime.create_otlp_profile_exporter",
         lambda: sentinel,
     )
+    assert Profiler._create_exporter_from_env() is sentinel
 
+
+def test_file_ignores_all_endpoint_settings(monkeypatch, tmp_path):
+    monkeypatch.setenv("OTEL_PROFILING_EXPORTER", "file")
+    monkeypatch.setenv("OTEL_PROFILING_FILE_PATH", str(tmp_path))
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_PROFILES_ENDPOINT", "not a URL")
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_PROFILES_PROTOCOL", "invalid")
     exporter = Profiler._create_exporter_from_env()
-
-    assert exporter is sentinel
-
-
-def test_runtime_uses_compatible_pprof_builder_for_http_exporter(tmp_path):
-    profiler = Profiler(
-        exporter=CompatiblePPROFExporter(pprof_path=str(tmp_path / "prof"))
+    assert isinstance(exporter, FileProfileExporter)
+    assert isinstance(
+        Profiler(exporter=exporter)._builder, PprofProfileBuilder
     )
-
-    try:
-        assert isinstance(profiler._builder, CompatiblePprofProfileBuilder)
-    finally:
-        profiler._exporter.shutdown()
+    exporter.export(b"profile")
+    assert next(tmp_path.glob("*.pprof")).read_bytes() == b"profile"
 
 
-def test_runtime_uses_standard_pprof_builder_for_file_exporter(tmp_path):
-    profiler = Profiler(
-        exporter=PPROFProfileExporter(directory=str(tmp_path / "prof"))
-    )
-
-    try:
-        assert isinstance(profiler._builder, PprofProfileBuilder)
-        assert not isinstance(profiler._builder, CompatiblePprofProfileBuilder)
-    finally:
-        profiler._exporter.shutdown()
+@pytest.mark.parametrize("name", ["datakit", "pprof", "pprof_http", "none"])
+def test_removed_exporter_names_rejected(monkeypatch, name):
+    monkeypatch.setenv("OTEL_PROFILING_EXPORTER", name)
+    with pytest.raises(ValueError, match="Unsupported profiling exporter"):
+        Profiler._create_exporter_from_env()
 
 
 def test_runtime_defaults_to_sixty_second_intervals(monkeypatch):

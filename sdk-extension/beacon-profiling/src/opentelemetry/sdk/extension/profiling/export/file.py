@@ -1,28 +1,30 @@
 from __future__ import annotations
 
 import os
-from itertools import count
+from pathlib import Path
+from uuid import uuid4
 
 from opentelemetry.sdk.extension.profiling.environment_variables import (
-    OTEL_PROFILING_PPROF_PATH,
+    OTEL_PROFILING_FILE_PATH,
 )
 from opentelemetry.sdk.extension.profiling.export.result import (
     ProfileExportResult,
 )
 
 
-class PPROFProfileExporter:
+class FileProfileExporter:
     def __init__(self, *, directory: str | None = None) -> None:
-        self._directory = directory or os.environ.get(
-            OTEL_PROFILING_PPROF_PATH, "otel-profiles"
+        self._directory = Path(
+            directory
+            or os.environ.get(OTEL_PROFILING_FILE_PATH, "otel-profiles")
         )
-        os.makedirs(os.path.dirname(self._directory) or ".", exist_ok=True)
-        self._counter = count(0)
-        self._pid = os.getpid()
+        self._directory.mkdir(parents=True, exist_ok=True)
 
     def export(self, payload: bytes) -> ProfileExportResult:
-        filename = f"{self._directory}.{self._pid}.{next(self._counter)}.pprof"
-        with open(filename, "wb") as handle:
+        filename = (
+            self._directory / f"profile-{os.getpid()}-{uuid4().hex}.pprof"
+        )
+        with filename.open("xb") as handle:
             handle.write(payload)
         return ProfileExportResult.SUCCESS
 
