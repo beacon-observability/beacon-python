@@ -1,0 +1,1 @@
+`beacon-profiling`: accept only `otlp` (HTTP/protobuf or gRPC) and `file` exporters; remove legacy multipart uploads and endpoint-driven selection. Local pprof output uses the `OTEL_PROFILING_FILE_PATH` directory and ignores OTLP settings.
