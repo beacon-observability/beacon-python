@@ -20,6 +20,7 @@ Stable release `1.2.3` publishes Security telemetry schema v2 after [PR #66](htt
 | Upstream auto-instrumentation and tests | [instrumentation](../instrumentation/) |
 | Build and contribution guidelines | [CONTRIBUTING.md](../CONTRIBUTING.md) |
 | Beacon version and upstream baseline checks | [check-version.py](scripts/check-version.py) |
+| Published instrumentation extras included in `[all]` | [instrumentation-extras.json](instrumentation-extras.json) |
 | FastAPI Demo | [examples/fastapi-demo](examples/fastapi-demo/) |
 | Release preparation | [RELEASING.md](RELEASING.md) |
 
@@ -32,6 +33,17 @@ uvx --from uv==0.12.1 uv lock --check
 uvx --from uv==0.12.1 uv run --frozen --package beacon-otel --with pytest pytest -q beacon-otel/tests
 uvx --from uv==0.12.1 uv run --frozen --package beacon-profiling --with pytest pytest -q sdk-extension/beacon-profiling/tests
 ```
+
+To add a supported instrumentation extra, update
+[`instrumentation-extras.json`](instrumentation-extras.json), then run
+`python beacon/scripts/check-version.py --sync` and refresh `uv.lock`. The script
+generates both the individual extras and `[all]` at the pinned Contrib version;
+profiling remains a separate extra at the Beacon product version. Confirm that
+each added plugin is published at the pinned version before adding it to the
+manifest. If it is a new workspace dependency, also add its workspace binding
+to `tool.uv.sources` in the root `pyproject.toml`. The wheel metadata check
+verifies that the built extras match this manifest and that `[all]` does not
+include profiling.
 
 The repository currently provides `beacon-otel`, the `beacon` command, and `beacon-profiling`. Security is embedded in `beacon-otel`, remains disabled by default, and does not create local files unless explicitly enabled. Release `1.2.3` follows the pinned Security schema v2 and fingerprint v1 contract. Its migration and contract provenance are recorded in [`security-migration.lock.json`](security-migration.lock.json), while language-specific use and Kubernetes configuration are documented in the [`beacon-otel` README](../beacon-otel/README.md#beacon-security). The default profile export interval is configurable and set to 60 seconds. See [`validation/1.2.3.md`](validation/1.2.3.md) for the current public release verification and [`validation/0.1.0rc2.md`](validation/0.1.0rc2.md) for backend evidence. The legacy `gtrace` distribution has been removed from this repository. Inherited upstream or legacy-repository release workflows must not be treated as Beacon release entry points.
 

@@ -54,9 +54,11 @@ jobs:
       - name: Test installed wheels
         run: |
           uv venv .beacon-test-env
-          uv pip install --python .beacon-test-env/bin/python --find-links dist 'beacon-otel[profiling,requests]' pytest jsonschema
+          beacon_wheels=(dist/beacon_otel-*.whl)
+          uv pip install --python .beacon-test-env/bin/python --find-links dist "${beacon_wheels[0]}[all,profiling]" pytest jsonschema
           uv pip install --python .beacon-test-env/bin/python --reinstall --no-deps --no-cache \
             dist/beacon_otel-*.whl dist/beacon_profiling-*.whl
+          uv pip check --python .beacon-test-env/bin/python
           .beacon-test-env/bin/python -m pytest -q beacon/tests beacon-otel/tests --ignore=beacon-otel/tests/security
           .beacon-test-env/bin/python -m pytest -q beacon-otel/tests/security/test_schema_contract.py
           .beacon-test-env/bin/python -m pytest -q sdk-extension/beacon-profiling/tests
