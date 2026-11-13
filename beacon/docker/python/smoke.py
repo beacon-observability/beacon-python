@@ -98,7 +98,6 @@ def main() -> None:
                     "OTEL_BSP_SCHEDULE_DELAY": "100",
                     "OTEL_BLRP_SCHEDULE_DELAY": "100",
                     "OTEL_PROFILING_EXPORT_INTERVAL": "1",
-                    "OTEL_PROFILING_EXPORTER": "otlp",
                     "OTEL_PROFILING_ENDPOINT": endpoint
                     + "/profiling/v1/input",
                     # The image fixture uses immutable public wheels, including
@@ -114,6 +113,7 @@ def main() -> None:
                     "OTEL_PROFILING_ENABLED",
                     "BEACON_SECURITY_LOCAL_OUTPUT_ENABLED",
                     "BEACON_SECURITY_EVIDENCE_FILE",
+                    "OTEL_PROFILING_EXPORTER",
                 ):
                     env.pop(key, None)
                 if enabled:
