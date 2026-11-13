@@ -35,11 +35,113 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Generated from beacon/instrumentation-extras.json and the version locks.
+# Update with: python beacon/scripts/check-version.py --sync
 profiling = ["beacon-profiling == 1.2.6"]
-requests = ["opentelemetry-instrumentation-requests == 0.66b2"]
-flask = ["opentelemetry-instrumentation-flask == 0.66b2"]
-fastapi = ["opentelemetry-instrumentation-fastapi == 0.66b2"]
+aio-pika = ["opentelemetry-instrumentation-aio-pika == 0.66b2"]
+aiohttp-client = ["opentelemetry-instrumentation-aiohttp-client == 0.66b2"]
+aiohttp-server = ["opentelemetry-instrumentation-aiohttp-server == 0.66b2"]
+aiokafka = ["opentelemetry-instrumentation-aiokafka == 0.66b2"]
+aiopg = ["opentelemetry-instrumentation-aiopg == 0.66b2"]
+asgi = ["opentelemetry-instrumentation-asgi == 0.66b2"]
+asyncclick = ["opentelemetry-instrumentation-asyncclick == 0.66b2"]
+asyncio = ["opentelemetry-instrumentation-asyncio == 0.66b2"]
+asyncpg = ["opentelemetry-instrumentation-asyncpg == 0.66b2"]
+aws-lambda = ["opentelemetry-instrumentation-aws-lambda == 0.66b2"]
+boto3sqs = ["opentelemetry-instrumentation-boto3sqs == 0.66b2"]
+botocore = ["opentelemetry-instrumentation-botocore == 0.66b2"]
+cassandra = ["opentelemetry-instrumentation-cassandra == 0.66b2"]
+celery = ["opentelemetry-instrumentation-celery == 0.66b2"]
+click = ["opentelemetry-instrumentation-click == 0.66b2"]
+confluent-kafka = ["opentelemetry-instrumentation-confluent-kafka == 0.66b2"]
+dbapi = ["opentelemetry-instrumentation-dbapi == 0.66b2"]
 django = ["opentelemetry-instrumentation-django == 0.66b2"]
+exceptions = ["opentelemetry-instrumentation-exceptions == 0.66b2"]
+falcon = ["opentelemetry-instrumentation-falcon == 0.66b2"]
+fastapi = ["opentelemetry-instrumentation-fastapi == 0.66b2"]
+flask = ["opentelemetry-instrumentation-flask == 0.66b2"]
+grpc = ["opentelemetry-instrumentation-grpc == 0.66b2"]
+httpx = ["opentelemetry-instrumentation-httpx == 0.66b2"]
+jinja2 = ["opentelemetry-instrumentation-jinja2 == 0.66b2"]
+kafka-python = ["opentelemetry-instrumentation-kafka-python == 0.66b2"]
+logging = ["opentelemetry-instrumentation-logging == 0.66b2"]
+mysql = ["opentelemetry-instrumentation-mysql == 0.66b2"]
+mysqlclient = ["opentelemetry-instrumentation-mysqlclient == 0.66b2"]
+pika = ["opentelemetry-instrumentation-pika == 0.66b2"]
+psycopg = ["opentelemetry-instrumentation-psycopg == 0.66b2"]
+psycopg2 = ["opentelemetry-instrumentation-psycopg2 == 0.66b2"]
+pymemcache = ["opentelemetry-instrumentation-pymemcache == 0.66b2"]
+pymongo = ["opentelemetry-instrumentation-pymongo == 0.66b2"]
+pymssql = ["opentelemetry-instrumentation-pymssql == 0.66b2"]
+pymysql = ["opentelemetry-instrumentation-pymysql == 0.66b2"]
+pyramid = ["opentelemetry-instrumentation-pyramid == 0.66b2"]
+redis = ["opentelemetry-instrumentation-redis == 0.66b2"]
+remoulade = ["opentelemetry-instrumentation-remoulade == 0.66b2"]
+requests = ["opentelemetry-instrumentation-requests == 0.66b2"]
+sqlalchemy = ["opentelemetry-instrumentation-sqlalchemy == 0.66b2"]
+sqlite3 = ["opentelemetry-instrumentation-sqlite3 == 0.66b2"]
+starlette = ["opentelemetry-instrumentation-starlette == 0.66b2"]
+structlog = ["opentelemetry-instrumentation-structlog == 0.66b2"]
+system-metrics = ["opentelemetry-instrumentation-system-metrics == 0.66b2"]
+threading = ["opentelemetry-instrumentation-threading == 0.66b2"]
+tornado = ["opentelemetry-instrumentation-tornado == 0.66b2"]
+tortoiseorm = ["opentelemetry-instrumentation-tortoiseorm == 0.66b2"]
+urllib = ["opentelemetry-instrumentation-urllib == 0.66b2"]
+urllib3 = ["opentelemetry-instrumentation-urllib3 == 0.66b2"]
+wsgi = ["opentelemetry-instrumentation-wsgi == 0.66b2"]
+all = [
+  "opentelemetry-instrumentation-aio-pika == 0.66b2",
+  "opentelemetry-instrumentation-aiohttp-client == 0.66b2",
+  "opentelemetry-instrumentation-aiohttp-server == 0.66b2",
+  "opentelemetry-instrumentation-aiokafka == 0.66b2",
+  "opentelemetry-instrumentation-aiopg == 0.66b2",
+  "opentelemetry-instrumentation-asgi == 0.66b2",
+  "opentelemetry-instrumentation-asyncclick == 0.66b2",
+  "opentelemetry-instrumentation-asyncio == 0.66b2",
+  "opentelemetry-instrumentation-asyncpg == 0.66b2",
+  "opentelemetry-instrumentation-aws-lambda == 0.66b2",
+  "opentelemetry-instrumentation-boto3sqs == 0.66b2",
+  "opentelemetry-instrumentation-botocore == 0.66b2",
+  "opentelemetry-instrumentation-cassandra == 0.66b2",
+  "opentelemetry-instrumentation-celery == 0.66b2",
+  "opentelemetry-instrumentation-click == 0.66b2",
+  "opentelemetry-instrumentation-confluent-kafka == 0.66b2",
+  "opentelemetry-instrumentation-dbapi == 0.66b2",
+  "opentelemetry-instrumentation-django == 0.66b2",
+  "opentelemetry-instrumentation-exceptions == 0.66b2",
+  "opentelemetry-instrumentation-falcon == 0.66b2",
+  "opentelemetry-instrumentation-fastapi == 0.66b2",
+  "opentelemetry-instrumentation-flask == 0.66b2",
+  "opentelemetry-instrumentation-grpc == 0.66b2",
+  "opentelemetry-instrumentation-httpx == 0.66b2",
+  "opentelemetry-instrumentation-jinja2 == 0.66b2",
+  "opentelemetry-instrumentation-kafka-python == 0.66b2",
+  "opentelemetry-instrumentation-logging == 0.66b2",
+  "opentelemetry-instrumentation-mysql == 0.66b2",
+  "opentelemetry-instrumentation-mysqlclient == 0.66b2",
+  "opentelemetry-instrumentation-pika == 0.66b2",
+  "opentelemetry-instrumentation-psycopg == 0.66b2",
+  "opentelemetry-instrumentation-psycopg2 == 0.66b2",
+  "opentelemetry-instrumentation-pymemcache == 0.66b2",
+  "opentelemetry-instrumentation-pymongo == 0.66b2",
+  "opentelemetry-instrumentation-pymssql == 0.66b2",
+  "opentelemetry-instrumentation-pymysql == 0.66b2",
+  "opentelemetry-instrumentation-pyramid == 0.66b2",
+  "opentelemetry-instrumentation-redis == 0.66b2",
+  "opentelemetry-instrumentation-remoulade == 0.66b2",
+  "opentelemetry-instrumentation-requests == 0.66b2",
+  "opentelemetry-instrumentation-sqlalchemy == 0.66b2",
+  "opentelemetry-instrumentation-sqlite3 == 0.66b2",
+  "opentelemetry-instrumentation-starlette == 0.66b2",
+  "opentelemetry-instrumentation-structlog == 0.66b2",
+  "opentelemetry-instrumentation-system-metrics == 0.66b2",
+  "opentelemetry-instrumentation-threading == 0.66b2",
+  "opentelemetry-instrumentation-tornado == 0.66b2",
+  "opentelemetry-instrumentation-tortoiseorm == 0.66b2",
+  "opentelemetry-instrumentation-urllib == 0.66b2",
+  "opentelemetry-instrumentation-urllib3 == 0.66b2",
+  "opentelemetry-instrumentation-wsgi == 0.66b2",
+]
 
 [project.scripts]
 beacon = "beacon_otel.cli:main"

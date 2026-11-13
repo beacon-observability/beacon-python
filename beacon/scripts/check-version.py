@@ -18,6 +18,11 @@ PACKAGE_VERSION_FILES = (
     ROOT / "beacon-otel/src/beacon_otel/version.py",
 )
 BEACON_OTEL_PYPROJECT = ROOT / "beacon-otel/pyproject.toml"
+INSTRUMENTATION_EXTRAS_FILE = ROOT / "beacon/instrumentation-extras.json"
+EXTRAS_PATTERN = re.compile(
+    r"^\[project\.optional-dependencies\]\n.*?(?=^\[|\Z)",
+    re.MULTILINE | re.DOTALL,
+)
 SECURITY_MIGRATION_FILE = ROOT / "beacon/security-migration.lock.json"
 SECURITY_PROPERTIES_FILE = (
     ROOT / "beacon-otel/src/beacon_security/security-spec.properties"
@@ -73,6 +78,70 @@ def package_version_source(version: str) -> str:
         "# Generated from beacon/version.properties by "
         "beacon/scripts/check-version.py.\n"
         f'__version__ = "{version}"\n'
+    )
+
+
+def instrumentation_extras() -> list[str]:
+    extras = json.loads(
+        INSTRUMENTATION_EXTRAS_FILE.read_text(encoding="utf-8")
+    )
+    require(
+        isinstance(extras, list)
+        and bool(extras)
+        and all(
+            isinstance(extra, str)
+            and re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", extra)
+            and extra not in {"all", "profiling"}
+            for extra in extras
+        ),
+        "Invalid instrumentation extras manifest",
+    )
+    require(
+        extras == sorted(set(extras)),
+        "Instrumentation extras must be unique and sorted",
+    )
+    return extras
+
+
+def optional_dependencies_source(version: str, contrib_version: str) -> str:
+    extras = instrumentation_extras()
+    requirements = {
+        extra: f"opentelemetry-instrumentation-{extra} == {contrib_version}"
+        for extra in extras
+    }
+    lines = [
+        "[project.optional-dependencies]",
+        "# Generated from beacon/instrumentation-extras.json and the version locks.",
+        "# Update with: python beacon/scripts/check-version.py --sync",
+        f'profiling = ["beacon-profiling == {version}"]',
+    ]
+    lines.extend(
+        f'{extra} = ["{requirement}"]'
+        for extra, requirement in requirements.items()
+    )
+    lines.append("all = [")
+    lines.extend(
+        f'  "{requirement}",' for requirement in requirements.values()
+    )
+    lines.extend(("]", "", ""))
+    return "\n".join(lines)
+
+
+def check_optional_dependencies(
+    version: str, contrib_version: str, sync: bool = False
+) -> None:
+    source = BEACON_OTEL_PYPROJECT.read_text(encoding="utf-8")
+    require(
+        len(EXTRAS_PATTERN.findall(source)) == 1,
+        "beacon-otel must declare one optional-dependencies section",
+    )
+    expected = optional_dependencies_source(version, contrib_version)
+    updated = EXTRAS_PATTERN.sub(lambda match: expected, source)
+    if sync and source != updated:
+        BEACON_OTEL_PYPROJECT.write_text(updated, encoding="utf-8")
+    require(
+        source == updated or sync,
+        "beacon-otel extras are stale; run check-version.py --sync",
     )
 
 
@@ -157,7 +226,7 @@ def check_baseline() -> tuple[str, str]:
             f'"{requirement}"' in beacon_otel,
             f"beacon-otel dependency differs from baseline: {requirement}",
         )
-    for package in ("requests", "flask", "fastapi", "django"):
+    for package in instrumentation_extras():
         requirement = (
             f"opentelemetry-instrumentation-{package} == {contrib_version}"
         )
@@ -277,6 +346,32 @@ def check_wheel(path: Path, version: str, baseline: tuple[str, str]) -> None:
             f"Wheel dependency differs from baseline: {package} == {expected}",
         )
     if name == "beacon-otel":
+        expected_extras = set(instrumentation_extras()) | {"all", "profiling"}
+        require(
+            set(metadata.get_all("Provides-Extra", [])) == expected_extras,
+            "Wheel instrumentation extras differ from the manifest",
+        )
+        expected_optional = {
+            (f"opentelemetry-instrumentation-{extra}", baseline[0], selector)
+            for extra in instrumentation_extras()
+            for selector in (extra, "all")
+        } | {("beacon-profiling", version, "profiling")}
+        actual_optional = set()
+        for item in requirements:
+            if ";" not in item:
+                continue
+            match = re.fullmatch(
+                r"([\w-]+)\s*==\s*([^;\s]+)\s*;\s*"
+                r"extra\s*==\s*['\"]([\w-]+)['\"]",
+                item,
+            )
+            if match is None:
+                raise ValueError(f"Unexpected optional dependency: {item}")
+            actual_optional.add(match.groups())
+        require(
+            actual_optional == expected_optional,
+            "Wheel optional dependencies differ from the manifest or baseline",
+        )
         require(
             any(
                 re.fullmatch(
@@ -373,20 +468,13 @@ def main() -> None:
             package_version_file.read_text(encoding="utf-8") == expected,
             f"{package_version_file}: stale; run check-version.py --sync",
         )
-    beacon_otel = BEACON_OTEL_PYPROJECT.read_text(encoding="utf-8")
-    profiling_requirement = re.compile(r"beacon-profiling == [^\"]+")
-    require(
-        len(profiling_requirement.findall(beacon_otel)) == 1,
-        "beacon-otel must declare one exact beacon-profiling extra",
+    upstream = json.loads(
+        (ROOT / "beacon/upstream.lock.json").read_text(encoding="utf-8")
     )
-    synced_pyproject = profiling_requirement.sub(
-        f"beacon-profiling == {version}", beacon_otel
-    )
-    if args.sync and beacon_otel != synced_pyproject:
-        BEACON_OTEL_PYPROJECT.write_text(synced_pyproject, encoding="utf-8")
-    require(
-        beacon_otel == synced_pyproject or args.sync,
-        "beacon-otel profiling extra is stale; run check-version.py --sync",
+    check_optional_dependencies(
+        version,
+        upstream["upstream"]["releaseTag"].removeprefix("v"),
+        args.sync,
     )
     baseline = check_baseline()
     check_security_provenance()

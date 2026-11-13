@@ -1,18 +1,46 @@
 # Beacon Python
 
-`beacon-otel` is the main Beacon Python installation package. The current stable
-release is `1.2.3`.
+> The expanded instrumentation extras and `[all]` described below are unreleased
+> changes in this checkout. The published `beacon-otel==1.2.6` provides only
+> `django`, `fastapi`, `flask`, `profiling`, and `requests` extras. Test the new
+> extras with a candidate wheel built from this branch until a new version is
+> published.
 
-Install the main package together with the auto-instrumentation plugins required by your framework. For example, a FastAPI application can install the current stable version with:
+`beacon-otel` is the main Beacon Python installation package. Install the base
+package in the application's Python environment:
 
 ```bash
-pip install 'beacon-otel[fastapi]==1.2.3'
+pip install beacon-otel
 ```
 
-To enable profiling, install:
+The base installation includes the OpenTelemetry SDK, OTLP exporters, the
+auto-instrumentation launcher and the threading plugin. It does not install all
+framework and client instrumentation packages. Select the plugins needed by
+the application, or install the complete supported plugin set:
 
 ```bash
-pip install 'beacon-otel[fastapi,profiling]==1.2.3'
+pip install 'beacon-otel[fastapi,redis,pymysql]'
+pip install 'beacon-otel[all]'
+```
+
+Extras add dependencies to the base installation. They install instrumentation
+plugins, not the business frameworks or database drivers themselves. For example,
+`mysql`, `mysqlclient` and `pymysql` select plugins for `mysql-connector-python`,
+`mysqlclient` and `PyMySQL`, respectively. The application manages those drivers.
+
+`all` contains the 51 conventional instrumentation packages listed in
+[`beacon/instrumentation-extras.json`](../beacon/instrumentation-extras.json).
+Each name in that list is also available as an individual extra. This includes
+logging and system metrics plugins as well as framework and client plugins.
+The set follows Beacon's OTel Contrib baseline; it excludes the development-only
+Valkey and GenAI packages in this checkout. Plugin availability does not imply
+that every version of its target library is supported.
+
+Profiling is a separate optional capability and is not included in `all`:
+
+```bash
+pip install 'beacon-otel[fastapi,profiling]'
+pip install 'beacon-otel[all,profiling]'
 ```
 
 Activate the virtual environment where Beacon is installed, configure the OTLP endpoint, and then start the application. You can also pass the full path of an executable in that virtual environment after `beacon`:
@@ -23,7 +51,19 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 beacon uvicorn myapp:app
 ```
 
-`beacon --version` displays the Beacon Python product version. Optional dependencies are currently provided for `requests`, `flask`, `fastapi`, and `django`; auto-instrumentation packages for other frameworks can be installed separately according to the official OpenTelemetry documentation. Package availability does not mean that every framework and runtime environment is supported by a stable Beacon release. Refer to the release notes and acceptance records for the supported scope of each version.
+`beacon --version` displays the Beacon Python product version. The launcher uses
+installed plugins; it does not download plugins at startup. Installing `all`
+prepares the supported plugin set without a separate bootstrap step. For a base
+installation, `opentelemetry-bootstrap -a install` remains available to detect
+installed business libraries and install matching plugins from OTel's catalog.
+Control automatic loading with `OTEL_PYTHON_DISABLED_INSTRUMENTATIONS`.
+
+Installing `all` applies the combined dependency constraints of every plugin,
+including unused ones. At the current baseline, asyncclick requires `wrapt < 2`
+and `typing-extensions >= 4.12, < 5`; ASGI requires `asgiref >= 3, < 4`; system
+metrics requires `psutil >= 5.9.0, < 8`. Use selected extras when an application's
+dependency constraints cannot satisfy the complete set. Refer to the release
+notes and acceptance records for the supported scope of each Beacon release.
 
 Optional dependencies install only the corresponding auto-instrumentation plugins; the application must install the framework itself. Do not install another profiling distribution that registers a conflicting auto-instrumentation entry point in the same Python environment.
 
