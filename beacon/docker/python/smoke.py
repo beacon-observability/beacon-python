@@ -101,6 +101,10 @@ def main() -> None:
                     "OTEL_PROFILING_EXPORTER": "otlp",
                     "OTEL_PROFILING_ENDPOINT": endpoint
                     + "/profiling/v1/input",
+                    # The image fixture uses immutable public wheels, including
+                    # versions released before the shared endpoint alias.
+                    "OTEL_PROFILING_PPROF_UPLOAD_URL": endpoint
+                    + "/profiling/v1/input",
                     "BEACON_SECURITY_PYTHON_INCLUDE": "fixture",
                     "BEACON_SECURITY_OUTPUT": scratch + "/security-output",
                 }
