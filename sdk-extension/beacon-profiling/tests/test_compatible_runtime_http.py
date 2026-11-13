@@ -13,7 +13,7 @@ from opentelemetry.sdk.extension.profiling.runtime import Profiler
 from opentelemetry.sdk.resources import Resource
 
 
-def test_otlp_environment_name_keeps_real_multipart_pprof_upload(monkeypatch):
+def test_http_environment_name_keeps_real_multipart_pprof_upload(monkeypatch):
     received = {}
     ready = Event()
 
@@ -39,7 +39,7 @@ def test_otlp_environment_name_keeps_real_multipart_pprof_upload(monkeypatch):
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     worker = Thread(target=server.serve_forever, daemon=True)
     worker.start()
-    monkeypatch.setenv("OTEL_PROFILING_EXPORTER", "otlp")
+    monkeypatch.setenv("OTEL_PROFILING_EXPORTER", "http")
     monkeypatch.delenv("OTEL_PROFILING_PPROF_UPLOAD_URL", raising=False)
     monkeypatch.setenv(
         "OTEL_PROFILING_ENDPOINT",

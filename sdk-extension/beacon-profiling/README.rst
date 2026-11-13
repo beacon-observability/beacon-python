@@ -50,7 +50,7 @@ Configuration
 The following environment variables are supported:
 
 * ``OTEL_PROFILING_ENABLED``
-* ``OTEL_PROFILING_EXPORTER`` (``otlp`` or ``file``; defaults to ``otlp``;
+* ``OTEL_PROFILING_EXPORTER`` (``http`` or ``file``; defaults to ``http``;
   legacy ``datakit`` and ``pprof_http`` names remain aliases)
 * ``OTEL_PROFILING_ENDPOINT`` (defaults to
   ``http://127.0.0.1:9529/profiling/v1/input``)
@@ -124,7 +124,7 @@ using the existing DataKit-compatible multipart/pprof format:
     export OTEL_PROFILING_EXCEPTION_ENABLED=true
     export OTEL_PROFILING_LOCK_ENABLED=true
     export OTEL_PROFILING_MEMORY_ENABLED=true
-    export OTEL_PROFILING_EXPORTER=otlp
+    export OTEL_PROFILING_EXPORTER=http
     export OTEL_PROFILING_ENDPOINT=http://127.0.0.1:9529/profiling/v1/input
     beacon python app.py
 
@@ -138,9 +138,10 @@ To dump pprof files instead of uploading them, set:
 The ``file`` exporter ignores all OTLP endpoint and transport settings.
 It writes gzip pprof files to the configured directory, without network uploads.
 
-The ``otlp`` configuration name selects the existing multipart/pprof uploader,
-not the standard OTLP Profiles wire protocol. Sampling and profile encoding are
-unchanged. This uploader does not inherit the trace exporter's protocol or shared
+The ``http`` configuration name selects the existing multipart/pprof uploader.
+The ``otlp`` exporter name is reserved for future OTLP Profiles support and is
+currently rejected by environment-based selection. Sampling and profile encoding
+are unchanged. This uploader does not inherit the trace exporter's protocol or shared
 OTLP endpoint. A gRPC traces endpoint is not a profiling upload endpoint.
 
 The ``OTEL_EXPORTER_OTLP_PROFILES_*`` settings above apply only when explicitly

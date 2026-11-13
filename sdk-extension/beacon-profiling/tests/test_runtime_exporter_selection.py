@@ -15,8 +15,8 @@ from opentelemetry.sdk.extension.profiling.model.pprof_builder import (
 from opentelemetry.sdk.extension.profiling.runtime import Profiler
 
 
-@pytest.mark.parametrize("name", [None, "otlp", "datakit", "pprof_http"])
-def test_runtime_keeps_compatible_upload_for_otlp_name(monkeypatch, name):
+@pytest.mark.parametrize("name", [None, "http", "datakit", "pprof_http"])
+def test_runtime_keeps_compatible_upload_for_http_name(monkeypatch, name):
     monkeypatch.delenv("OTEL_PROFILING_PPROF_UPLOAD_URL", raising=False)
     if name is None:
         monkeypatch.delenv("OTEL_PROFILING_EXPORTER", raising=False)
@@ -48,7 +48,7 @@ def test_file_ignores_all_endpoint_settings(monkeypatch, tmp_path):
     assert next(tmp_path.glob("*.pprof")).read_bytes() == b"profile"
 
 
-@pytest.mark.parametrize("name", ["unknown", "pprof", "none"])
+@pytest.mark.parametrize("name", ["unknown", "pprof", "none", "otlp"])
 def test_unsupported_exporter_names_rejected(monkeypatch, name):
     monkeypatch.setenv("OTEL_PROFILING_EXPORTER", name)
     with pytest.raises(ValueError, match="Unsupported profiling exporter"):

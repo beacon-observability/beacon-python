@@ -468,10 +468,10 @@ class Profiler:
 
     @staticmethod
     def _create_exporter_from_env():
-        exporter_name = environ.get(OTEL_PROFILING_EXPORTER, "otlp").strip()
+        exporter_name = environ.get(OTEL_PROFILING_EXPORTER, "http").strip()
         if exporter_name == "file":
             return FileProfileExporter()
-        if exporter_name not in ("otlp", "datakit", "pprof_http"):
+        if exporter_name not in ("http", "datakit", "pprof_http"):
             raise ValueError(
                 f"Unsupported profiling exporter '{exporter_name}'"
             )

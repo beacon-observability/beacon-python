@@ -9,6 +9,7 @@ import platform
 from collections import deque
 from itertools import count
 from os import environ
+from typing import Dict, Optional
 from uuid import uuid4
 
 import requests
@@ -37,9 +38,9 @@ class PPROFHTTPExporter:
         self,
         *,
         upload_url: str | None = None,
-        headers: dict[str, str] | None = None,
+        headers: Optional[Dict[str, str]] = None,
         timeout: float = 10.0,
-        session: requests.Session | None = None,
+        session: Optional[requests.Session] = None,
         pprof_path: str | None = None,
         max_files: int | None = None,
         service: str | None = None,
@@ -225,8 +226,8 @@ class PPROFHTTPExporter:
 
 
 def _resolve_headers(
-    headers: dict[str, str] | None,
-) -> dict[str, str]:
+    headers: Optional[Dict[str, str]],
+) -> Dict[str, str]:
     resolved = _parse_headers(environ.get(OTEL_PROFILING_PPROF_HEADERS, ""))
     if headers is not None:
         resolved.update(headers)
@@ -242,7 +243,7 @@ def _resolve_upload_url() -> str:
     return f"{_DEFAULT_AGENT_BASE_URL}/{_DEFAULT_AGENT_PATH}"
 
 
-def _parse_headers(value: str) -> dict[str, str]:
+def _parse_headers(value: str) -> Dict[str, str]:
     headers = {}
     for header in value.split(","):
         if ":" not in header:
@@ -265,7 +266,7 @@ def _resource_attribute(resource: Resource | None, *keys: str) -> str | None:
     return None
 
 
-def _format_timestamp(timestamp_unix_nano: float) -> str:
+def _format_timestamp(timestamp_unix_nano: float | int) -> str:
     timestamp = datetime.datetime.fromtimestamp(
         float(timestamp_unix_nano) / 1e9,
         tz=datetime.timezone.utc,
