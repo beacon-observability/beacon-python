@@ -98,10 +98,12 @@ def main() -> None:
                     "OTEL_BSP_SCHEDULE_DELAY": "100",
                     "OTEL_BLRP_SCHEDULE_DELAY": "100",
                     "OTEL_PROFILING_EXPORT_INTERVAL": "1",
-                    "OTEL_PROFILING_EXPORTER": "otlp",
-                    "OTEL_EXPORTER_OTLP_PROFILES_PROTOCOL": "http/protobuf",
-                    "OTEL_EXPORTER_OTLP_PROFILES_ENDPOINT": endpoint
-                    + "/v1development/profiles",
+                    "OTEL_PROFILING_ENDPOINT": endpoint
+                    + "/profiling/v1/input",
+                    # The image fixture uses immutable public wheels, including
+                    # versions released before the shared endpoint alias.
+                    "OTEL_PROFILING_PPROF_UPLOAD_URL": endpoint
+                    + "/profiling/v1/input",
                     "BEACON_SECURITY_PYTHON_INCLUDE": "fixture",
                     "BEACON_SECURITY_OUTPUT": scratch + "/security-output",
                 }
@@ -111,6 +113,7 @@ def main() -> None:
                     "OTEL_PROFILING_ENABLED",
                     "BEACON_SECURITY_LOCAL_OUTPUT_ENABLED",
                     "BEACON_SECURITY_EVIDENCE_FILE",
+                    "OTEL_PROFILING_EXPORTER",
                 ):
                     env.pop(key, None)
                 if enabled:
@@ -156,14 +159,15 @@ def main() -> None:
                 profiles = [
                     (kind, body)
                     for path, kind, body in received
-                    if path == "/v1development/profiles"
+                    if path == "/profiling/v1/input"
                 ]
                 logs = [
                     body for path, _, body in received if path == "/v1/logs"
                 ]
                 if enabled:
                     assert any(
-                        "application/x-protobuf" in kind and body
+                        "multipart/form-data" in kind
+                        and b'filename="auto.pprof"' in body
                         for kind, body in profiles
                     ), result.stderr
                     records = [

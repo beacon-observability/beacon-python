@@ -65,7 +65,7 @@ from opentelemetry.sdk.extension.profiling.environment_variables import (
     OTEL_PROFILING_SAMPLE_INTERVAL,
 )
 from opentelemetry.sdk.extension.profiling.export import (
-    create_otlp_profile_exporter,
+    CompatiblePPROFExporter,
 )
 from opentelemetry.sdk.extension.profiling.export.file import (
     FileProfileExporter,
@@ -74,6 +74,7 @@ from opentelemetry.sdk.extension.profiling.model.builder import (
     ProfilesRequestBuilder,
 )
 from opentelemetry.sdk.extension.profiling.model.pprof_builder import (
+    CompatiblePprofProfileBuilder,
     PprofProfileBuilder,
 )
 from opentelemetry.sdk.extension.profiling.scheduler import ProfileScheduler
@@ -432,6 +433,18 @@ class Profiler:
             resource=resource,
             sample_period_ns=int(self._sample_interval * 1_000_000_000),
         )
+        if isinstance(self._exporter, CompatiblePPROFExporter):
+            self._exporter.export(
+                payload,
+                resource=resource,
+                start_time_unix_nano=min(
+                    sample.timestamp_unix_nano for sample in batch
+                ),
+                end_time_unix_nano=max(
+                    sample.timestamp_unix_nano for sample in batch
+                ),
+            )
+            return
         self._exporter.export(payload)
 
     def force_flush(self) -> None:
@@ -447,20 +460,22 @@ class Profiler:
         return Resource.create()
 
     def _create_builder(self):
+        if isinstance(self._exporter, CompatiblePPROFExporter):
+            return CompatiblePprofProfileBuilder()
         if isinstance(self._exporter, FileProfileExporter):
             return PprofProfileBuilder()
         return ProfilesRequestBuilder()
 
     @staticmethod
     def _create_exporter_from_env():
-        exporter_name = environ.get(OTEL_PROFILING_EXPORTER, "otlp").strip()
+        exporter_name = environ.get(OTEL_PROFILING_EXPORTER, "http").strip()
         if exporter_name == "file":
             return FileProfileExporter()
-        if exporter_name != "otlp":
+        if exporter_name not in ("http", "datakit", "pprof_http"):
             raise ValueError(
                 f"Unsupported profiling exporter '{exporter_name}'"
             )
-        return create_otlp_profile_exporter()
+        return CompatiblePPROFExporter()
 
     def _start_collectors(self) -> list[Collector]:
         active_collectors = []

@@ -1,0 +1,1 @@
+`beacon-profiling`: restore multipart uploads for the ``http`` exporter name.
