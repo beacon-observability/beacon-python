@@ -5,23 +5,33 @@ import pytest
 from opentelemetry.sdk.extension.profiling.export.file import (
     FileProfileExporter,
 )
+from opentelemetry.sdk.extension.profiling.export.pprof_http import (
+    PPROFHTTPExporter,
+)
 from opentelemetry.sdk.extension.profiling.model.pprof_builder import (
+    CompatiblePprofProfileBuilder,
     PprofProfileBuilder,
 )
 from opentelemetry.sdk.extension.profiling.runtime import Profiler
 
 
-def test_runtime_defaults_to_otlp(monkeypatch):
-    sentinel = object()
-    monkeypatch.delenv("OTEL_PROFILING_EXPORTER", raising=False)
+@pytest.mark.parametrize("name", [None, "http", "datakit", "pprof_http"])
+def test_runtime_keeps_compatible_upload_for_http_name(monkeypatch, name):
+    monkeypatch.delenv("OTEL_PROFILING_PPROF_UPLOAD_URL", raising=False)
+    if name is None:
+        monkeypatch.delenv("OTEL_PROFILING_EXPORTER", raising=False)
+    else:
+        monkeypatch.setenv("OTEL_PROFILING_EXPORTER", name)
     monkeypatch.setenv(
-        "OTEL_PROFILING_PPROF_UPLOAD_URL", "invalid old endpoint"
+        "OTEL_PROFILING_ENDPOINT", "http://127.0.0.1:9529/profiling/v1/input"
     )
-    monkeypatch.setattr(
-        "opentelemetry.sdk.extension.profiling.runtime.create_otlp_profile_exporter",
-        lambda: sentinel,
+    exporter = Profiler._create_exporter_from_env()
+    assert isinstance(exporter, PPROFHTTPExporter)
+    assert exporter._url == "http://127.0.0.1:9529/profiling/v1/input"
+    assert isinstance(
+        Profiler(exporter=exporter)._builder, CompatiblePprofProfileBuilder
     )
-    assert Profiler._create_exporter_from_env() is sentinel
+    exporter.shutdown()
 
 
 def test_file_ignores_all_endpoint_settings(monkeypatch, tmp_path):
@@ -38,8 +48,8 @@ def test_file_ignores_all_endpoint_settings(monkeypatch, tmp_path):
     assert next(tmp_path.glob("*.pprof")).read_bytes() == b"profile"
 
 
-@pytest.mark.parametrize("name", ["datakit", "pprof", "pprof_http", "none"])
-def test_removed_exporter_names_rejected(monkeypatch, name):
+@pytest.mark.parametrize("name", ["unknown", "pprof", "none", "otlp"])
+def test_unsupported_exporter_names_rejected(monkeypatch, name):
     monkeypatch.setenv("OTEL_PROFILING_EXPORTER", name)
     with pytest.raises(ValueError, match="Unsupported profiling exporter"):
         Profiler._create_exporter_from_env()

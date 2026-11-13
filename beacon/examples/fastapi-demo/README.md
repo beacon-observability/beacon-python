@@ -33,9 +33,8 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4317
 export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 
 export OTEL_PROFILING_ENABLED=true
-export OTEL_PROFILING_EXPORTER=otlp
-export OTEL_EXPORTER_OTLP_PROFILES_PROTOCOL=http/protobuf
-export OTEL_EXPORTER_OTLP_PROFILES_ENDPOINT=http://localhost:4318/v1development/profiles
+export OTEL_PROFILING_EXPORTER=http
+export OTEL_PROFILING_ENDPOINT=http://127.0.0.1:9529/profiling/v1/input
 ```
 
 Profiles are aggregated and exported every 60 seconds by default. Set
@@ -89,4 +88,4 @@ export OTEL_PROFILING_INCLUDE_TRACE_CONTEXT=false
 beacon uvicorn app:app --host 127.0.0.1 --port 8000
 ```
 
-After requesting `/work`, FastAPI and `requests` spans should appear in the terminal and `.pprof` files should be created under `otel-profiles/`. The local pprof encoder cannot represent some unsigned trace and span IDs, so this local-file-only validation mode disables trace context in profiles. OTLP Profiles export preserves unsigned trace and span IDs without this workaround.
+After requesting `/work`, FastAPI and `requests` spans should appear in the terminal and `.pprof` files should be created under `otel-profiles/`. The local pprof encoder cannot represent some unsigned trace and span IDs, so this local-file-only validation mode disables trace context in profiles. The environment-selected `http` uploader also uses compatible pprof; this example does not validate unsigned trace and span IDs.
