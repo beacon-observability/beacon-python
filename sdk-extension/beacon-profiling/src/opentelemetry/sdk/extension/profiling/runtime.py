@@ -111,7 +111,9 @@ class Profiler:
         max_buffer_bytes: int | None = None,
     ) -> None:
         self._resource = resource
-        self._sample_interval = sample_interval or float(environ.get(OTEL_PROFILING_SAMPLE_INTERVAL, "0.01"))
+        self._sample_interval = sample_interval or float(
+            environ.get(OTEL_PROFILING_SAMPLE_INTERVAL, "0.01")
+        )
         self._export_interval = (
             export_interval
             if export_interval is not None
@@ -122,9 +124,13 @@ class Profiler:
                 )
             )
         )
-        self._max_frames = max_frames or int(environ.get(OTEL_PROFILING_MAX_FRAMES, "64"))
+        self._max_frames = max_frames or int(
+            environ.get(OTEL_PROFILING_MAX_FRAMES, "64")
+        )
         self._include_trace_context = (
-            _parse_bool(environ.get(OTEL_PROFILING_INCLUDE_TRACE_CONTEXT, "true"))
+            _parse_bool(
+                environ.get(OTEL_PROFILING_INCLUDE_TRACE_CONTEXT, "true")
+            )
             if include_trace_context is None
             else include_trace_context
         )
@@ -150,7 +156,9 @@ class Profiler:
             else exception_collect_message
         )
         self._lock_enabled = (
-            _parse_bool(environ.get(OTEL_PROFILING_LOCK_ENABLED, "false")) if lock_enabled is None else lock_enabled
+            _parse_bool(environ.get(OTEL_PROFILING_LOCK_ENABLED, "false"))
+            if lock_enabled is None
+            else lock_enabled
         )
         self._memory_enabled = (
             _parse_bool(environ.get(OTEL_PROFILING_MEMORY_ENABLED, "false"))
@@ -185,7 +193,9 @@ class Profiler:
         )
 
         self._buffer_lock = Lock()
-        self._sample_budget = SampleBudget(max_buffer_samples, max_buffer_bytes)
+        self._sample_budget = SampleBudget(
+            max_buffer_samples, max_buffer_bytes
+        )
         self._samples = SampleBuffer(self._sample_budget)
         self._reported_drops = 0
         self._atexit_registered = False
@@ -305,7 +315,9 @@ class Profiler:
         with self._active_lock:
             active = self.__class__._active_instance
             if active is not None and active is not self and active._started:
-                _logger.error("A profiler is already running. Only one profiler instance can be active at a time.")
+                _logger.error(
+                    "A profiler is already running. Only one profiler instance can be active at a time."
+                )
                 return
             if self._started:
                 return
@@ -425,8 +437,12 @@ class Profiler:
             self._exporter.export(
                 payload,
                 resource=resource,
-                start_time_unix_nano=min(sample.timestamp_unix_nano for sample in batch),
-                end_time_unix_nano=max(sample.timestamp_unix_nano for sample in batch),
+                start_time_unix_nano=min(
+                    sample.timestamp_unix_nano for sample in batch
+                ),
+                end_time_unix_nano=max(
+                    sample.timestamp_unix_nano for sample in batch
+                ),
             )
             return
         self._exporter.export(payload)
@@ -456,7 +472,9 @@ class Profiler:
         if exporter_name == "file":
             return FileProfileExporter()
         if exporter_name not in ("otlp", "datakit", "pprof_http"):
-            raise ValueError(f"Unsupported profiling exporter '{exporter_name}'")
+            raise ValueError(
+                f"Unsupported profiling exporter '{exporter_name}'"
+            )
         return CompatiblePPROFExporter()
 
     def _start_collectors(self) -> list[Collector]:
@@ -538,7 +556,9 @@ class Profiler:
             try:
                 self.start()
             except Exception:
-                _logger.exception("Failed to restart profiler in child process after fork")
+                _logger.exception(
+                    "Failed to restart profiler in child process after fork"
+                )
 
     def _reset_exporter_after_fork(self) -> None:
         if self._exporter is None:

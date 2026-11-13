@@ -47,7 +47,9 @@ def test_pprof_http_exporter_posts_multipart_payload(monkeypatch, tmp_path):
     kwargs = session.post.call_args.kwargs
     assert kwargs["url"] == "http://agent:8126/profiling/v1/input"
     assert kwargs["headers"]["X-API-Key"] == "api-key"
-    assert kwargs["headers"]["Content-Type"].startswith("multipart/form-data; boundary=")
+    assert kwargs["headers"]["Content-Type"].startswith(
+        "multipart/form-data; boundary="
+    )
     body = kwargs["data"]
     assert b'filename="event.json"' in body
     assert b'filename="auto.pprof"' in body
@@ -75,7 +77,9 @@ def test_pprof_http_exporter_handles_failure(monkeypatch, tmp_path):
     assert files
 
 
-def test_http_upload_does_not_require_a_writable_directory(monkeypatch, tmp_path) -> None:
+def test_http_upload_does_not_require_a_writable_directory(
+    monkeypatch, tmp_path
+) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("OTEL_PROFILING_PPROF_PATH", raising=False)
     session = Mock()
@@ -87,10 +91,14 @@ def test_http_upload_does_not_require_a_writable_directory(monkeypatch, tmp_path
 
 
 @pytest.mark.parametrize("error_number", [errno.EACCES, errno.ENOSPC])
-def test_local_write_failure_still_uploads_and_recovers(monkeypatch, tmp_path, error_number: int, caplog) -> None:
+def test_local_write_failure_still_uploads_and_recovers(
+    monkeypatch, tmp_path, error_number: int, caplog
+) -> None:
     session = Mock()
     session.post.return_value = Mock(status_code=202)
-    exporter = PPROFHTTPExporter(session=session, pprof_path=str(tmp_path / "profile"))
+    exporter = PPROFHTTPExporter(
+        session=session, pprof_path=str(tmp_path / "profile")
+    )
     write = exporter._write_payload
 
     def fail(payload: bytes) -> None:
@@ -105,11 +113,15 @@ def test_local_write_failure_still_uploads_and_recovers(monkeypatch, tmp_path, e
     assert next(tmp_path.glob("*.pprof")).read_bytes() == b"second"
 
 
-def test_http_local_copies_have_bounded_instance_retention(monkeypatch, tmp_path) -> None:
+def test_http_local_copies_have_bounded_instance_retention(
+    monkeypatch, tmp_path
+) -> None:
     session = Mock()
     session.post.return_value = Mock(status_code=202)
     monkeypatch.setenv("OTEL_PROFILING_PPROF_MAX_FILES", "2")
-    exporter = PPROFHTTPExporter(session=session, pprof_path=str(tmp_path / "profile"))
+    exporter = PPROFHTTPExporter(
+        session=session, pprof_path=str(tmp_path / "profile")
+    )
     other = tmp_path / "profile.other-process.pprof"
     other.write_bytes(b"keep")
     for index in range(5):
@@ -119,7 +131,9 @@ def test_http_local_copies_have_bounded_instance_retention(monkeypatch, tmp_path
     assert other.read_bytes() == b"keep"
 
 
-def test_explicit_empty_path_disables_environment_local_copies(monkeypatch, tmp_path) -> None:
+def test_explicit_empty_path_disables_environment_local_copies(
+    monkeypatch, tmp_path
+) -> None:
     monkeypatch.setenv("OTEL_PROFILING_PPROF_PATH", str(tmp_path / "profile"))
     session = Mock()
     session.post.return_value = Mock(status_code=202)
@@ -135,7 +149,9 @@ def test_build_failure_returns_failure_and_next_export_recovers(
     session.post.return_value = Mock(status_code=202)
     exporter = PPROFHTTPExporter(session=session, pprof_path="")
     build = exporter._build_request
-    monkeypatch.setattr(exporter, "_build_request", Mock(side_effect=ValueError("bad build")))
+    monkeypatch.setattr(
+        exporter, "_build_request", Mock(side_effect=ValueError("bad build"))
+    )
     assert exporter.export(b"first").name == "FAILURE"
     session.post.assert_not_called()
     monkeypatch.setattr(exporter, "_build_request", build)

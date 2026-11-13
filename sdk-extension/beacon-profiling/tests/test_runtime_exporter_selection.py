@@ -5,7 +5,9 @@ import pytest
 from opentelemetry.sdk.extension.profiling.export.file import (
     FileProfileExporter,
 )
-from opentelemetry.sdk.extension.profiling.export.pprof_http import PPROFHTTPExporter
+from opentelemetry.sdk.extension.profiling.export.pprof_http import (
+    PPROFHTTPExporter,
+)
 from opentelemetry.sdk.extension.profiling.model.pprof_builder import (
     CompatiblePprofProfileBuilder,
     PprofProfileBuilder,
@@ -20,11 +22,15 @@ def test_runtime_keeps_compatible_upload_for_otlp_name(monkeypatch, name):
         monkeypatch.delenv("OTEL_PROFILING_EXPORTER", raising=False)
     else:
         monkeypatch.setenv("OTEL_PROFILING_EXPORTER", name)
-    monkeypatch.setenv("OTEL_PROFILING_ENDPOINT", "http://127.0.0.1:9529/profiling/v1/input")
+    monkeypatch.setenv(
+        "OTEL_PROFILING_ENDPOINT", "http://127.0.0.1:9529/profiling/v1/input"
+    )
     exporter = Profiler._create_exporter_from_env()
     assert isinstance(exporter, PPROFHTTPExporter)
     assert exporter._url == "http://127.0.0.1:9529/profiling/v1/input"
-    assert isinstance(Profiler(exporter=exporter)._builder, CompatiblePprofProfileBuilder)
+    assert isinstance(
+        Profiler(exporter=exporter)._builder, CompatiblePprofProfileBuilder
+    )
     exporter.shutdown()
 
 
@@ -35,7 +41,9 @@ def test_file_ignores_all_endpoint_settings(monkeypatch, tmp_path):
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_PROFILES_PROTOCOL", "invalid")
     exporter = Profiler._create_exporter_from_env()
     assert isinstance(exporter, FileProfileExporter)
-    assert isinstance(Profiler(exporter=exporter)._builder, PprofProfileBuilder)
+    assert isinstance(
+        Profiler(exporter=exporter)._builder, PprofProfileBuilder
+    )
     exporter.export(b"profile")
     assert next(tmp_path.glob("*.pprof")).read_bytes() == b"profile"
 

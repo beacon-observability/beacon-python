@@ -21,10 +21,14 @@ def test_otlp_environment_name_keeps_real_multipart_pprof_upload(monkeypatch):
         def do_POST(self) -> None:
             body = self.rfile.read(int(self.headers["Content-Length"]))
             message = BytesParser(policy=policy.default).parsebytes(
-                f"Content-Type: {self.headers['Content-Type']}\r\n\r\n".encode() + body
+                f"Content-Type: {self.headers['Content-Type']}\r\n\r\n".encode()
+                + body
             )
             received["path"] = self.path
-            received["parts"] = {part.get_filename(): part.get_payload(decode=True) for part in message.iter_parts()}
+            received["parts"] = {
+                part.get_filename(): part.get_payload(decode=True)
+                for part in message.iter_parts()
+            }
             self.send_response(200)
             self.end_headers()
             ready.set()
@@ -59,7 +63,9 @@ def test_otlp_environment_name_keeps_real_multipart_pprof_upload(monkeypatch):
         assert event["family"] == "python"
         assert event["attachments"] == ["auto.pprof"]
         assert "service:multipart-regression" in event["tags_profiler"]
-        profile = pprof_pb2.Profile.FromString(gzip.decompress(received["parts"]["auto.pprof"]))
+        profile = pprof_pb2.Profile.FromString(
+            gzip.decompress(received["parts"]["auto.pprof"])
+        )
         assert profile.sample
         assert profile.function
     finally:

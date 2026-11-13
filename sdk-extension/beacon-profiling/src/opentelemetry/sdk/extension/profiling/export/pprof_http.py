@@ -50,8 +50,16 @@ class PPROFHTTPExporter:
         self._headers = _resolve_headers(headers)
         self._timeout = timeout
         self._session = session or requests.Session()
-        self._pprof_path = pprof_path if pprof_path is not None else environ.get(OTEL_PROFILING_PPROF_PATH)
-        self._max_files = max_files if max_files is not None else int(environ.get(OTEL_PROFILING_PPROF_MAX_FILES, "3"))
+        self._pprof_path = (
+            pprof_path
+            if pprof_path is not None
+            else environ.get(OTEL_PROFILING_PPROF_PATH)
+        )
+        self._max_files = (
+            max_files
+            if max_files is not None
+            else int(environ.get(OTEL_PROFILING_PPROF_MAX_FILES, "3"))
+        )
         if self._max_files < 1:
             raise ValueError("max_files must be >= 1")
         self._written_paths: deque[str] = deque()
@@ -129,12 +137,15 @@ class PPROFHTTPExporter:
             "attachments": ["auto.pprof"],
             "tags_profiler": self._format_tags(service, resource),
             "start": _format_timestamp(
-                start_time_unix_nano or datetime.datetime.now(tz=datetime.timezone.utc).timestamp() * 1_000_000_000
+                start_time_unix_nano
+                or datetime.datetime.now(tz=datetime.timezone.utc).timestamp()
+                * 1_000_000_000
             ),
             "end": _format_timestamp(
                 end_time_unix_nano
                 or start_time_unix_nano
-                or datetime.datetime.now(tz=datetime.timezone.utc).timestamp() * 1_000_000_000
+                or datetime.datetime.now(tz=datetime.timezone.utc).timestamp()
+                * 1_000_000_000
             ),
         }
         files = [
@@ -166,7 +177,11 @@ class PPROFHTTPExporter:
         return ",".join(f"{key}:{value}" for key, value in tags.items())
 
     def _resolve_service(self, resource: Resource | None) -> str:
-        return _resource_attribute(resource, "service.name") or self._service or "unknown_service"
+        return (
+            _resource_attribute(resource, "service.name")
+            or self._service
+            or "unknown_service"
+        )
 
     def _resolve_env(self, resource: Resource | None) -> str | None:
         return (
@@ -179,12 +194,16 @@ class PPROFHTTPExporter:
         )
 
     def _resolve_version(self, resource: Resource | None) -> str | None:
-        return _resource_attribute(resource, "service.version") or self._version
+        return (
+            _resource_attribute(resource, "service.version") or self._version
+        )
 
     def _write_payload(self, payload: bytes) -> str | None:
         if not self._pprof_path:
             return None
-        filename = f"{self._pprof_path}.{self._pid}.{next(self._counter)}.pprof"
+        filename = (
+            f"{self._pprof_path}.{self._pid}.{next(self._counter)}.pprof"
+        )
         os.makedirs(os.path.dirname(filename) or ".", exist_ok=True)
         with open(filename, "wb") as handle:
             handle.write(payload)
@@ -215,7 +234,9 @@ def _resolve_headers(
 
 
 def _resolve_upload_url() -> str:
-    explicit = environ.get(OTEL_PROFILING_PPROF_UPLOAD_URL) or environ.get(OTEL_PROFILING_ENDPOINT)
+    explicit = environ.get(OTEL_PROFILING_PPROF_UPLOAD_URL) or environ.get(
+        OTEL_PROFILING_ENDPOINT
+    )
     if explicit:
         return explicit
     return f"{_DEFAULT_AGENT_BASE_URL}/{_DEFAULT_AGENT_PATH}"
@@ -274,7 +295,10 @@ def _encode_multipart_formdata(
                     str(item["filename"]).encode("utf-8"),
                 )
             )
-            + (b"Content-Type: %s\r\n\r\n" % str(item["content_type"]).encode("utf-8"))
+            + (
+                b"Content-Type: %s\r\n\r\n"
+                % str(item["content_type"]).encode("utf-8")
+            )
             + bytes(item["data"])
             + b"\r\n"
             for item in files
