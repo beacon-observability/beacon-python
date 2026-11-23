@@ -37,7 +37,7 @@ dependencies = [
 [project.optional-dependencies]
 # Generated from beacon/instrumentation-extras.json and the version locks.
 # Update with: python beacon/scripts/check-version.py --sync
-profiling = ["beacon-profiling == 1.2.7"]
+profiling = ["beacon-profiling == 1.3.0"]
 aio-pika = ["opentelemetry-instrumentation-aio-pika == 0.66b2"]
 aiohttp-client = ["opentelemetry-instrumentation-aiohttp-client == 0.66b2"]
 aiohttp-server = ["opentelemetry-instrumentation-aiohttp-server == 0.66b2"]

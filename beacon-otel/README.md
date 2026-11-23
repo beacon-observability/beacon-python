@@ -1,10 +1,8 @@
 # Beacon Python
 
-> The expanded instrumentation extras and `[all]` described below are unreleased
-> changes in this checkout. The published `beacon-otel==1.2.7` provides only
-> `django`, `fastapi`, `flask`, `profiling`, and `requests` extras. Test the new
-> extras with a candidate wheel built from this branch until a new version is
-> published.
+Beacon Python 1.3.0 includes individual instrumentation extras and `[all]`.
+Upgrading from 1.2.7 also changes the Security event Body to the SIEM envelope;
+see the [release notes](../beacon/releases/1.3.0.md) before updating consumers.
 
 `beacon-otel` is the main Beacon Python installation package. Install the base
 package in the application's Python environment:
