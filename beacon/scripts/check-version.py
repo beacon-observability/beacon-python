@@ -220,11 +220,20 @@ def check_security_provenance() -> None:
             "revision": contract["commit"],
             "schemaVersion": str(contract["schemaVersion"]),
             "fingerprintVersion": str(contract["fingerprintVersion"]),
+            "exportProfile": contract["exportProfile"],
         },
         "Packaged Security contract pin differs from migration lock",
     )
+    require(
+        contract["exportProfile"] == "beacon-security-siem-v1",
+        "Unexpected Security export profile",
+    )
     fixtures = {
         **SECURITY_FIXTURES,
+        "exportProfileSchemaSha256": ROOT
+        / "beacon-otel/src/beacon_security/siem-v1.schema.json",
+        "evidenceSchemaSha256": ROOT
+        / "beacon-otel/src/beacon_security/evidence.schema.json",
         "schemaSha256": (
             ROOT
             / "beacon-otel/tests/security/fixtures/spec"
@@ -237,6 +246,15 @@ def check_security_provenance() -> None:
             digest == contract[field],
             f"Security fixture differs from pinned contract: {path}",
         )
+
+    require(
+        (
+            ROOT
+            / "beacon-otel/tests/security/fixtures/spec/beacon-security-siem-v1.schema.json"
+        ).read_bytes()
+        == fixtures["exportProfileSchemaSha256"].read_bytes(),
+        "Security SIEM fixture differs from packaged schema",
+    )
 
 
 def check_wheel(path: Path, version: str, baseline: tuple[str, str]) -> None:
