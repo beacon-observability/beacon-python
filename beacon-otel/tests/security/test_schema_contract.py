@@ -19,9 +19,10 @@ VECTORS = json.loads(
     (FIXTURES / "fingerprint-v1.json").read_text(encoding="utf-8")
 )
 SCHEMA = json.loads(
-    (FIXTURES / "beacon-security-event-v2.schema.json").read_text(
-        encoding="utf-8"
-    )
+    (
+        Path(__file__).resolve().parents[2]
+        / "src/beacon_security/evidence.schema.json"
+    ).read_text(encoding="utf-8")
 )
 VALIDATOR = Draft202012Validator(SCHEMA, format_checker=FormatChecker())
 IDENTITY = {
@@ -109,8 +110,7 @@ def test_emits_only_compact_v2_finding_and_inventory() -> None:
                 "execution_observation": "invocation_attempt",
                 "precision": "exact",
                 "trace_id": "",
-                "server_span_id": "",
-                "current_span_id": "",
+                "span_id": "",
                 "trace_flags": 0,
                 "sources": [],
                 "propagation": [],

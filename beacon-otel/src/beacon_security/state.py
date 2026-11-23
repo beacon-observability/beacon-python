@@ -553,9 +553,8 @@ class SecurityState:
                     "execution_observation": "invocation_attempt",
                     "precision": "exact" if exact else "conservative",
                     "trace_id": self.trace_id,
-                    "server_span_id": self.server_span_id,
                     "trace_flags": self.trace_flags,
-                    "current_span_id": format(context.span_id, "016x")
+                    "span_id": format(context.span_id, "016x")
                     if context.is_valid
                     and format(context.trace_id, "032x") == self.trace_id
                     else "",

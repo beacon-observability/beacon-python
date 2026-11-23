@@ -206,19 +206,14 @@ def event_record(original, identity=None):
     if event.get("event_name") == "beacon.security.finding":
         event["request"] = request_fields(event.get("request"))
         event["trace_id"] = trace_id(event.get("trace_id"), 32)
-        event["server_span_id"] = (
-            trace_id(event.get("server_span_id"), 16)
-            if event["trace_id"]
-            else ""
-        )
-        event["current_span_id"] = (
-            trace_id(event.get("current_span_id"), 16)
-            if event["trace_id"]
-            else ""
+        event.pop("server_span_id", None)
+        event.pop("current_span_id", None)
+        event["span_id"] = (
+            trace_id(event.get("span_id"), 16) if event["trace_id"] else ""
         )
         event["trace_flags"] = (
             int(event.get("trace_flags") or 0) & 0xFF
-            if event["server_span_id"]
+            if event["span_id"]
             else 0
         )
         event["trace_availability"] = "not_guaranteed_by_trace_id"

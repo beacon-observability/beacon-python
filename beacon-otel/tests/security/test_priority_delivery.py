@@ -29,7 +29,7 @@ def event(index, priority=0, size=100):
         },
         "occurrence_id": f"request-{index}",
         "trace_id": f"{index + 1:032x}",
-        "server_span_id": f"{index + 1:016x}",
+        "span_id": f"{index + 1:016x}",
         "evidence_sampled": True,
         "collection_complete": True,
         "run": {"size": size},
@@ -117,7 +117,7 @@ def test_full_queue_evicts_lower_priority_preserving_context_and_counts(
     for entry in entries:
         context = get_current_span(entry.span_context).get_span_context()
         assert context.trace_id == int(entry.event["trace_id"], 16)
-        assert context.span_id == int(entry.event["server_span_id"], 16)
+        assert context.span_id == int(entry.event["span_id"], 16)
     counters = exporter.delivery()["counters"]
     assert counters["security.priority_evicted"] == 1
     assert counters["security.queue_full"] == 2

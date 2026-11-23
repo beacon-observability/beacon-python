@@ -16,8 +16,8 @@ from jsonschema import Draft202012Validator, FormatChecker
 
 _SCHEMA = json.loads(
     (
-        Path(__file__).resolve().parent
-        / "fixtures/spec/beacon-security-event-v2.schema.json"
+        Path(__file__).resolve().parents[2]
+        / "src/beacon_security/evidence.schema.json"
     ).read_text()
 )
 _VALIDATOR = Draft202012Validator(_SCHEMA, format_checker=FormatChecker())
@@ -77,6 +77,7 @@ def occurrence(
             )
             is None
         )
+        event["span_id"] = f"{index:016x}" if index else ""
         assert len(state.pending) == 1
         result = ledger.end(state)
         assert len(result) == 1
@@ -213,9 +214,11 @@ def test_lightweight_occurrences_reach_otlp_http(
             )
         assert exporter.flush(timeout=5)
         findings = [
-            (log, json.loads(log.body.string_value))
+            (log, json.loads(json.loads(log.body.string_value)["message"]))
             for log in received
-            if json.loads(log.body.string_value).get("event_name")
+            if json.loads(json.loads(log.body.string_value)["message"]).get(
+                "event_name"
+            )
             == "beacon.security.finding"
         ]
         indices = (1, 2, 3) if include_no_evidence or not fragments else (2,)

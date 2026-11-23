@@ -15,7 +15,7 @@ from dataclasses import field as dataclass_field
 from pathlib import Path
 from typing import Any
 
-from . import config
+from . import config, siem
 from .ledger import RuntimeLedger
 from .schema import PRODUCT, event_record
 from .telemetry import FINDING, INVENTORY, project_event
@@ -481,6 +481,11 @@ class Exporter:
                         events_limit, bytes_limit
                     )
                 encoded, truncated = self._encode_record_result(entry.event)
+                payload = (
+                    json.loads(json.loads(encoded)["message"])
+                    if truncated
+                    else entry.event
+                )
                 if truncated:
                     self._record_record_truncation(entry.event, channel)
                 if channel == "security" and not priority_budget.admit(
@@ -516,7 +521,7 @@ class Exporter:
                 # OTel delivery alone is only an API emission.
                 export_entry = (
                     _Entry(
-                        json.loads(encoded),
+                        payload,
                         entry.span_context,
                         entry.evidence or channel == "security",
                     )
@@ -576,6 +581,9 @@ class Exporter:
     ) -> tuple[bytes, bool]:
         encoded = _encode_json(event)
         if len(encoded) <= self._max_bytes:
+            encoded = siem.encode(encoded, self.ledger.identity)
+            if len(encoded) > self._max_bytes:
+                raise ValueError("siem_record_limit")
             return encoded, False
 
         reduced = dict(event)
@@ -587,7 +595,7 @@ class Exporter:
         reduced["evidence_sample_reason"] = "record_byte_limit"
         reduced["truncated"] = True
         reduced["truncation_reason"] = "record_byte_limit"
-        encoded = _encode_json(reduced)
+        encoded = siem.encode(_encode_json(reduced), self.ledger.identity)
         if len(encoded) <= self._max_bytes:
             return encoded, True
 
@@ -782,6 +790,19 @@ class Exporter:
         except BaseException:
             return None
 
+        # The finding belongs to the span active at detection, even when
+        # request completion supplies the enclosing server span as context.
+        detected = Exporter._span_context_from_values(
+            event.get("trace_id"),
+            event.get("span_id"),
+            SpanContext,
+            TraceFlags,
+            TraceState,
+            event.get("trace_flags", 0),
+        )
+        if detected is not None and detected.is_valid:
+            return set_span_in_context(NonRecordingSpan(detected), Context())
+
         if isinstance(span_context, Context):
             # ``LogRecord`` falls back to the worker's current context when
             # handed a falsy Context.  Keep the bridge explicit even for a
@@ -811,7 +832,7 @@ class Exporter:
         if not isinstance(candidate, SpanContext):
             candidate = Exporter._span_context_from_values(
                 event.get("trace_id"),
-                event.get("server_span_id") or event.get("current_span_id"),
+                event.get("span_id"),
                 SpanContext,
                 TraceFlags,
                 TraceState,
