@@ -30,9 +30,10 @@ jobs:
       - name: Test built wheels
         run: |
           uv venv .beacon-test-env
+          beacon_wheels=(dist/otel/beacon_otel-*.whl)
           uv pip install --python .beacon-test-env/bin/python \
             --find-links dist/profiling --find-links dist/otel \
-            'beacon-otel[profiling,requests,flask,fastapi,django]' \
+            "${beacon_wheels[0]}[all,profiling]" \
             pytest jsonschema 'cyclonedx-python-lib==11.12.0' \
             'pydantic>=2,<3' 'flask>=3.1,<3.2' 'django>=5.2,<5.3' \
             'fastapi>=0.141,<0.142' 'starlette>=1.6,<1.7' \
@@ -41,6 +42,7 @@ jobs:
             python-multipart psutil 'trio>=0.30,<1'
           uv pip install --python .beacon-test-env/bin/python --reinstall --no-deps --no-cache \
             dist/otel/beacon_otel-*.whl dist/profiling/beacon_profiling-*.whl
+          uv pip check --python .beacon-test-env/bin/python
           .beacon-test-env/bin/python -m pytest -q beacon/tests beacon-otel/tests --ignore=beacon-otel/tests/security
           .beacon-test-env/bin/python -m pytest -q beacon-otel/tests/security
           .beacon-test-env/bin/python -m pytest -q sdk-extension/beacon-profiling/tests

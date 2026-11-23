@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.10"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -540,8 +540,118 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+aio-pika = [
+    { name = "opentelemetry-instrumentation-aio-pika" },
+]
+aiohttp-client = [
+    { name = "opentelemetry-instrumentation-aiohttp-client" },
+]
+aiohttp-server = [
+    { name = "opentelemetry-instrumentation-aiohttp-server" },
+]
+aiokafka = [
+    { name = "opentelemetry-instrumentation-aiokafka" },
+]
+aiopg = [
+    { name = "opentelemetry-instrumentation-aiopg" },
+]
+all = [
+    { name = "opentelemetry-instrumentation-aio-pika" },
+    { name = "opentelemetry-instrumentation-aiohttp-client" },
+    { name = "opentelemetry-instrumentation-aiohttp-server" },
+    { name = "opentelemetry-instrumentation-aiokafka" },
+    { name = "opentelemetry-instrumentation-aiopg" },
+    { name = "opentelemetry-instrumentation-asgi" },
+    { name = "opentelemetry-instrumentation-asyncclick" },
+    { name = "opentelemetry-instrumentation-asyncio" },
+    { name = "opentelemetry-instrumentation-asyncpg" },
+    { name = "opentelemetry-instrumentation-aws-lambda" },
+    { name = "opentelemetry-instrumentation-boto3sqs" },
+    { name = "opentelemetry-instrumentation-botocore" },
+    { name = "opentelemetry-instrumentation-cassandra" },
+    { name = "opentelemetry-instrumentation-celery" },
+    { name = "opentelemetry-instrumentation-click" },
+    { name = "opentelemetry-instrumentation-confluent-kafka" },
+    { name = "opentelemetry-instrumentation-dbapi" },
+    { name = "opentelemetry-instrumentation-django" },
+    { name = "opentelemetry-instrumentation-exceptions" },
+    { name = "opentelemetry-instrumentation-falcon" },
+    { name = "opentelemetry-instrumentation-fastapi" },
+    { name = "opentelemetry-instrumentation-flask" },
+    { name = "opentelemetry-instrumentation-grpc" },
+    { name = "opentelemetry-instrumentation-httpx" },
+    { name = "opentelemetry-instrumentation-jinja2" },
+    { name = "opentelemetry-instrumentation-kafka-python" },
+    { name = "opentelemetry-instrumentation-logging" },
+    { name = "opentelemetry-instrumentation-mysql" },
+    { name = "opentelemetry-instrumentation-mysqlclient" },
+    { name = "opentelemetry-instrumentation-pika" },
+    { name = "opentelemetry-instrumentation-psycopg" },
+    { name = "opentelemetry-instrumentation-psycopg2" },
+    { name = "opentelemetry-instrumentation-pymemcache" },
+    { name = "opentelemetry-instrumentation-pymongo" },
+    { name = "opentelemetry-instrumentation-pymssql" },
+    { name = "opentelemetry-instrumentation-pymysql" },
+    { name = "opentelemetry-instrumentation-pyramid" },
+    { name = "opentelemetry-instrumentation-redis" },
+    { name = "opentelemetry-instrumentation-remoulade" },
+    { name = "opentelemetry-instrumentation-requests" },
+    { name = "opentelemetry-instrumentation-sqlalchemy" },
+    { name = "opentelemetry-instrumentation-sqlite3" },
+    { name = "opentelemetry-instrumentation-starlette" },
+    { name = "opentelemetry-instrumentation-structlog" },
+    { name = "opentelemetry-instrumentation-system-metrics" },
+    { name = "opentelemetry-instrumentation-threading" },
+    { name = "opentelemetry-instrumentation-tornado" },
+    { name = "opentelemetry-instrumentation-tortoiseorm" },
+    { name = "opentelemetry-instrumentation-urllib" },
+    { name = "opentelemetry-instrumentation-urllib3" },
+    { name = "opentelemetry-instrumentation-wsgi" },
+]
+asgi = [
+    { name = "opentelemetry-instrumentation-asgi" },
+]
+asyncclick = [
+    { name = "opentelemetry-instrumentation-asyncclick" },
+]
+asyncio = [
+    { name = "opentelemetry-instrumentation-asyncio" },
+]
+asyncpg = [
+    { name = "opentelemetry-instrumentation-asyncpg" },
+]
+aws-lambda = [
+    { name = "opentelemetry-instrumentation-aws-lambda" },
+]
+boto3sqs = [
+    { name = "opentelemetry-instrumentation-boto3sqs" },
+]
+botocore = [
+    { name = "opentelemetry-instrumentation-botocore" },
+]
+cassandra = [
+    { name = "opentelemetry-instrumentation-cassandra" },
+]
+celery = [
+    { name = "opentelemetry-instrumentation-celery" },
+]
+click = [
+    { name = "opentelemetry-instrumentation-click" },
+]
+confluent-kafka = [
+    { name = "opentelemetry-instrumentation-confluent-kafka" },
+]
+dbapi = [
+    { name = "opentelemetry-instrumentation-dbapi" },
+]
 django = [
     { name = "opentelemetry-instrumentation-django" },
+]
+exceptions = [
+    { name = "opentelemetry-instrumentation-exceptions" },
+]
+falcon = [
+    { name = "opentelemetry-instrumentation-falcon" },
 ]
 fastapi = [
     { name = "opentelemetry-instrumentation-fastapi" },
@@ -549,11 +659,95 @@ fastapi = [
 flask = [
     { name = "opentelemetry-instrumentation-flask" },
 ]
+grpc = [
+    { name = "opentelemetry-instrumentation-grpc" },
+]
+httpx = [
+    { name = "opentelemetry-instrumentation-httpx" },
+]
+jinja2 = [
+    { name = "opentelemetry-instrumentation-jinja2" },
+]
+kafka-python = [
+    { name = "opentelemetry-instrumentation-kafka-python" },
+]
+logging = [
+    { name = "opentelemetry-instrumentation-logging" },
+]
+mysql = [
+    { name = "opentelemetry-instrumentation-mysql" },
+]
+mysqlclient = [
+    { name = "opentelemetry-instrumentation-mysqlclient" },
+]
+pika = [
+    { name = "opentelemetry-instrumentation-pika" },
+]
 profiling = [
     { name = "beacon-profiling" },
 ]
+psycopg = [
+    { name = "opentelemetry-instrumentation-psycopg" },
+]
+psycopg2 = [
+    { name = "opentelemetry-instrumentation-psycopg2" },
+]
+pymemcache = [
+    { name = "opentelemetry-instrumentation-pymemcache" },
+]
+pymongo = [
+    { name = "opentelemetry-instrumentation-pymongo" },
+]
+pymssql = [
+    { name = "opentelemetry-instrumentation-pymssql" },
+]
+pymysql = [
+    { name = "opentelemetry-instrumentation-pymysql" },
+]
+pyramid = [
+    { name = "opentelemetry-instrumentation-pyramid" },
+]
+redis = [
+    { name = "opentelemetry-instrumentation-redis" },
+]
+remoulade = [
+    { name = "opentelemetry-instrumentation-remoulade" },
+]
 requests = [
     { name = "opentelemetry-instrumentation-requests" },
+]
+sqlalchemy = [
+    { name = "opentelemetry-instrumentation-sqlalchemy" },
+]
+sqlite3 = [
+    { name = "opentelemetry-instrumentation-sqlite3" },
+]
+starlette = [
+    { name = "opentelemetry-instrumentation-starlette" },
+]
+structlog = [
+    { name = "opentelemetry-instrumentation-structlog" },
+]
+system-metrics = [
+    { name = "opentelemetry-instrumentation-system-metrics" },
+]
+threading = [
+    { name = "opentelemetry-instrumentation-threading" },
+]
+tornado = [
+    { name = "opentelemetry-instrumentation-tornado" },
+]
+tortoiseorm = [
+    { name = "opentelemetry-instrumentation-tortoiseorm" },
+]
+urllib = [
+    { name = "opentelemetry-instrumentation-urllib" },
+]
+urllib3 = [
+    { name = "opentelemetry-instrumentation-urllib3" },
+]
+wsgi = [
+    { name = "opentelemetry-instrumentation-wsgi" },
 ]
 
 [package.metadata]
@@ -562,16 +756,114 @@ requires-dist = [
     { name = "opentelemetry-api", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-api&tag=v1.45.2" },
     { name = "opentelemetry-exporter-otlp", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=exporter%2Fopentelemetry-exporter-otlp&tag=v1.45.2" },
     { name = "opentelemetry-instrumentation", editable = "opentelemetry-instrumentation" },
+    { name = "opentelemetry-instrumentation-aio-pika", marker = "extra == 'aio-pika'", editable = "instrumentation/opentelemetry-instrumentation-aio-pika" },
+    { name = "opentelemetry-instrumentation-aio-pika", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-aio-pika" },
+    { name = "opentelemetry-instrumentation-aiohttp-client", marker = "extra == 'aiohttp-client'", editable = "instrumentation/opentelemetry-instrumentation-aiohttp-client" },
+    { name = "opentelemetry-instrumentation-aiohttp-client", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-aiohttp-client" },
+    { name = "opentelemetry-instrumentation-aiohttp-server", marker = "extra == 'aiohttp-server'", editable = "instrumentation/opentelemetry-instrumentation-aiohttp-server" },
+    { name = "opentelemetry-instrumentation-aiohttp-server", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-aiohttp-server" },
+    { name = "opentelemetry-instrumentation-aiokafka", marker = "extra == 'aiokafka'", editable = "instrumentation/opentelemetry-instrumentation-aiokafka" },
+    { name = "opentelemetry-instrumentation-aiokafka", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-aiokafka" },
+    { name = "opentelemetry-instrumentation-aiopg", marker = "extra == 'aiopg'", editable = "instrumentation/opentelemetry-instrumentation-aiopg" },
+    { name = "opentelemetry-instrumentation-aiopg", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-aiopg" },
+    { name = "opentelemetry-instrumentation-asgi", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-asgi" },
+    { name = "opentelemetry-instrumentation-asgi", marker = "extra == 'asgi'", editable = "instrumentation/opentelemetry-instrumentation-asgi" },
+    { name = "opentelemetry-instrumentation-asyncclick", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-asyncclick" },
+    { name = "opentelemetry-instrumentation-asyncclick", marker = "extra == 'asyncclick'", editable = "instrumentation/opentelemetry-instrumentation-asyncclick" },
+    { name = "opentelemetry-instrumentation-asyncio", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-asyncio" },
+    { name = "opentelemetry-instrumentation-asyncio", marker = "extra == 'asyncio'", editable = "instrumentation/opentelemetry-instrumentation-asyncio" },
+    { name = "opentelemetry-instrumentation-asyncpg", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-asyncpg" },
+    { name = "opentelemetry-instrumentation-asyncpg", marker = "extra == 'asyncpg'", editable = "instrumentation/opentelemetry-instrumentation-asyncpg" },
+    { name = "opentelemetry-instrumentation-aws-lambda", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-aws-lambda" },
+    { name = "opentelemetry-instrumentation-aws-lambda", marker = "extra == 'aws-lambda'", editable = "instrumentation/opentelemetry-instrumentation-aws-lambda" },
+    { name = "opentelemetry-instrumentation-boto3sqs", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-boto3sqs" },
+    { name = "opentelemetry-instrumentation-boto3sqs", marker = "extra == 'boto3sqs'", editable = "instrumentation/opentelemetry-instrumentation-boto3sqs" },
+    { name = "opentelemetry-instrumentation-botocore", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-botocore" },
+    { name = "opentelemetry-instrumentation-botocore", marker = "extra == 'botocore'", editable = "instrumentation/opentelemetry-instrumentation-botocore" },
+    { name = "opentelemetry-instrumentation-cassandra", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-cassandra" },
+    { name = "opentelemetry-instrumentation-cassandra", marker = "extra == 'cassandra'", editable = "instrumentation/opentelemetry-instrumentation-cassandra" },
+    { name = "opentelemetry-instrumentation-celery", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-celery" },
+    { name = "opentelemetry-instrumentation-celery", marker = "extra == 'celery'", editable = "instrumentation/opentelemetry-instrumentation-celery" },
+    { name = "opentelemetry-instrumentation-click", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-click" },
+    { name = "opentelemetry-instrumentation-click", marker = "extra == 'click'", editable = "instrumentation/opentelemetry-instrumentation-click" },
+    { name = "opentelemetry-instrumentation-confluent-kafka", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-confluent-kafka" },
+    { name = "opentelemetry-instrumentation-confluent-kafka", marker = "extra == 'confluent-kafka'", editable = "instrumentation/opentelemetry-instrumentation-confluent-kafka" },
+    { name = "opentelemetry-instrumentation-dbapi", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-dbapi" },
+    { name = "opentelemetry-instrumentation-dbapi", marker = "extra == 'dbapi'", editable = "instrumentation/opentelemetry-instrumentation-dbapi" },
+    { name = "opentelemetry-instrumentation-django", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-django" },
     { name = "opentelemetry-instrumentation-django", marker = "extra == 'django'", editable = "instrumentation/opentelemetry-instrumentation-django" },
+    { name = "opentelemetry-instrumentation-exceptions", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-exceptions" },
+    { name = "opentelemetry-instrumentation-exceptions", marker = "extra == 'exceptions'", editable = "instrumentation/opentelemetry-instrumentation-exceptions" },
+    { name = "opentelemetry-instrumentation-falcon", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-falcon" },
+    { name = "opentelemetry-instrumentation-falcon", marker = "extra == 'falcon'", editable = "instrumentation/opentelemetry-instrumentation-falcon" },
+    { name = "opentelemetry-instrumentation-fastapi", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-fastapi" },
     { name = "opentelemetry-instrumentation-fastapi", marker = "extra == 'fastapi'", editable = "instrumentation/opentelemetry-instrumentation-fastapi" },
+    { name = "opentelemetry-instrumentation-flask", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-flask" },
     { name = "opentelemetry-instrumentation-flask", marker = "extra == 'flask'", editable = "instrumentation/opentelemetry-instrumentation-flask" },
+    { name = "opentelemetry-instrumentation-grpc", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-grpc" },
+    { name = "opentelemetry-instrumentation-grpc", marker = "extra == 'grpc'", editable = "instrumentation/opentelemetry-instrumentation-grpc" },
+    { name = "opentelemetry-instrumentation-httpx", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-httpx" },
+    { name = "opentelemetry-instrumentation-httpx", marker = "extra == 'httpx'", editable = "instrumentation/opentelemetry-instrumentation-httpx" },
+    { name = "opentelemetry-instrumentation-jinja2", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-jinja2" },
+    { name = "opentelemetry-instrumentation-jinja2", marker = "extra == 'jinja2'", editable = "instrumentation/opentelemetry-instrumentation-jinja2" },
+    { name = "opentelemetry-instrumentation-kafka-python", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-kafka-python" },
+    { name = "opentelemetry-instrumentation-kafka-python", marker = "extra == 'kafka-python'", editable = "instrumentation/opentelemetry-instrumentation-kafka-python" },
+    { name = "opentelemetry-instrumentation-logging", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-logging" },
+    { name = "opentelemetry-instrumentation-logging", marker = "extra == 'logging'", editable = "instrumentation/opentelemetry-instrumentation-logging" },
+    { name = "opentelemetry-instrumentation-mysql", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-mysql" },
+    { name = "opentelemetry-instrumentation-mysql", marker = "extra == 'mysql'", editable = "instrumentation/opentelemetry-instrumentation-mysql" },
+    { name = "opentelemetry-instrumentation-mysqlclient", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-mysqlclient" },
+    { name = "opentelemetry-instrumentation-mysqlclient", marker = "extra == 'mysqlclient'", editable = "instrumentation/opentelemetry-instrumentation-mysqlclient" },
+    { name = "opentelemetry-instrumentation-pika", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-pika" },
+    { name = "opentelemetry-instrumentation-pika", marker = "extra == 'pika'", editable = "instrumentation/opentelemetry-instrumentation-pika" },
+    { name = "opentelemetry-instrumentation-psycopg", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-psycopg" },
+    { name = "opentelemetry-instrumentation-psycopg", marker = "extra == 'psycopg'", editable = "instrumentation/opentelemetry-instrumentation-psycopg" },
+    { name = "opentelemetry-instrumentation-psycopg2", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-psycopg2" },
+    { name = "opentelemetry-instrumentation-psycopg2", marker = "extra == 'psycopg2'", editable = "instrumentation/opentelemetry-instrumentation-psycopg2" },
+    { name = "opentelemetry-instrumentation-pymemcache", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-pymemcache" },
+    { name = "opentelemetry-instrumentation-pymemcache", marker = "extra == 'pymemcache'", editable = "instrumentation/opentelemetry-instrumentation-pymemcache" },
+    { name = "opentelemetry-instrumentation-pymongo", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-pymongo" },
+    { name = "opentelemetry-instrumentation-pymongo", marker = "extra == 'pymongo'", editable = "instrumentation/opentelemetry-instrumentation-pymongo" },
+    { name = "opentelemetry-instrumentation-pymssql", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-pymssql" },
+    { name = "opentelemetry-instrumentation-pymssql", marker = "extra == 'pymssql'", editable = "instrumentation/opentelemetry-instrumentation-pymssql" },
+    { name = "opentelemetry-instrumentation-pymysql", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-pymysql" },
+    { name = "opentelemetry-instrumentation-pymysql", marker = "extra == 'pymysql'", editable = "instrumentation/opentelemetry-instrumentation-pymysql" },
+    { name = "opentelemetry-instrumentation-pyramid", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-pyramid" },
+    { name = "opentelemetry-instrumentation-pyramid", marker = "extra == 'pyramid'", editable = "instrumentation/opentelemetry-instrumentation-pyramid" },
+    { name = "opentelemetry-instrumentation-redis", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-redis" },
+    { name = "opentelemetry-instrumentation-redis", marker = "extra == 'redis'", editable = "instrumentation/opentelemetry-instrumentation-redis" },
+    { name = "opentelemetry-instrumentation-remoulade", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-remoulade" },
+    { name = "opentelemetry-instrumentation-remoulade", marker = "extra == 'remoulade'", editable = "instrumentation/opentelemetry-instrumentation-remoulade" },
+    { name = "opentelemetry-instrumentation-requests", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-requests" },
     { name = "opentelemetry-instrumentation-requests", marker = "extra == 'requests'", editable = "instrumentation/opentelemetry-instrumentation-requests" },
+    { name = "opentelemetry-instrumentation-sqlalchemy", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-sqlalchemy" },
+    { name = "opentelemetry-instrumentation-sqlalchemy", marker = "extra == 'sqlalchemy'", editable = "instrumentation/opentelemetry-instrumentation-sqlalchemy" },
+    { name = "opentelemetry-instrumentation-sqlite3", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-sqlite3" },
+    { name = "opentelemetry-instrumentation-sqlite3", marker = "extra == 'sqlite3'", editable = "instrumentation/opentelemetry-instrumentation-sqlite3" },
+    { name = "opentelemetry-instrumentation-starlette", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-starlette" },
+    { name = "opentelemetry-instrumentation-starlette", marker = "extra == 'starlette'", editable = "instrumentation/opentelemetry-instrumentation-starlette" },
+    { name = "opentelemetry-instrumentation-structlog", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-structlog" },
+    { name = "opentelemetry-instrumentation-structlog", marker = "extra == 'structlog'", editable = "instrumentation/opentelemetry-instrumentation-structlog" },
+    { name = "opentelemetry-instrumentation-system-metrics", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-system-metrics" },
+    { name = "opentelemetry-instrumentation-system-metrics", marker = "extra == 'system-metrics'", editable = "instrumentation/opentelemetry-instrumentation-system-metrics" },
     { name = "opentelemetry-instrumentation-threading", editable = "instrumentation/opentelemetry-instrumentation-threading" },
+    { name = "opentelemetry-instrumentation-threading", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-threading" },
+    { name = "opentelemetry-instrumentation-threading", marker = "extra == 'threading'", editable = "instrumentation/opentelemetry-instrumentation-threading" },
+    { name = "opentelemetry-instrumentation-tornado", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-tornado" },
+    { name = "opentelemetry-instrumentation-tornado", marker = "extra == 'tornado'", editable = "instrumentation/opentelemetry-instrumentation-tornado" },
+    { name = "opentelemetry-instrumentation-tortoiseorm", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-tortoiseorm" },
+    { name = "opentelemetry-instrumentation-tortoiseorm", marker = "extra == 'tortoiseorm'", editable = "instrumentation/opentelemetry-instrumentation-tortoiseorm" },
+    { name = "opentelemetry-instrumentation-urllib", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-urllib" },
+    { name = "opentelemetry-instrumentation-urllib", marker = "extra == 'urllib'", editable = "instrumentation/opentelemetry-instrumentation-urllib" },
+    { name = "opentelemetry-instrumentation-urllib3", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-urllib3" },
+    { name = "opentelemetry-instrumentation-urllib3", marker = "extra == 'urllib3'", editable = "instrumentation/opentelemetry-instrumentation-urllib3" },
+    { name = "opentelemetry-instrumentation-wsgi", marker = "extra == 'all'", editable = "instrumentation/opentelemetry-instrumentation-wsgi" },
+    { name = "opentelemetry-instrumentation-wsgi", marker = "extra == 'wsgi'", editable = "instrumentation/opentelemetry-instrumentation-wsgi" },
     { name = "opentelemetry-sdk", git = "https://github.com/open-telemetry/opentelemetry-python?subdirectory=opentelemetry-sdk&tag=v1.45.2" },
     { name = "packaging", specifier = ">=24" },
     { name = "wrapt", specifier = ">=1.17,<3" },
 ]
-provides-extras = ["django", "fastapi", "flask", "profiling", "requests"]
+provides-extras = ["aio-pika", "aiohttp-client", "aiohttp-server", "aiokafka", "aiopg", "all", "asgi", "asyncclick", "asyncio", "asyncpg", "aws-lambda", "boto3sqs", "botocore", "cassandra", "celery", "click", "confluent-kafka", "dbapi", "django", "exceptions", "falcon", "fastapi", "flask", "grpc", "httpx", "jinja2", "kafka-python", "logging", "mysql", "mysqlclient", "pika", "profiling", "psycopg", "psycopg2", "pymemcache", "pymongo", "pymssql", "pymysql", "pyramid", "redis", "remoulade", "requests", "sqlalchemy", "sqlite3", "starlette", "structlog", "system-metrics", "threading", "tornado", "tortoiseorm", "urllib", "urllib3", "wsgi"]
 
 [[package]]
 name = "beacon-profiling"

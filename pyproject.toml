@@ -83,6 +83,10 @@ opentelemetry-semantic-conventions = { git = "https://github.com/open-telemetry/
 opentelemetry-test-utils = { git = "https://github.com/open-telemetry/opentelemetry-python", tag = "v1.45.2", subdirectory = "tests/opentelemetry-test-utils" }
 opentelemetry-exporter-otlp = { git = "https://github.com/open-telemetry/opentelemetry-python", tag = "v1.45.2", subdirectory = "exporter/opentelemetry-exporter-otlp" }
 opentelemetry-instrumentation = { workspace = true }
+opentelemetry-instrumentation-asyncclick = { workspace = true }
+opentelemetry-instrumentation-exceptions = { workspace = true }
+opentelemetry-instrumentation-pymssql = { workspace = true }
+opentelemetry-instrumentation-starlette = { workspace = true }
 opentelemetry-exporter-prometheus-remote-write = { workspace = true }
 opentelemetry-exporter-richconsole = { workspace = true }
 beacon-profiling = { workspace = true }
