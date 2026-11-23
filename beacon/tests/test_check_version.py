@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -113,6 +114,59 @@ class VersionCheckTest(unittest.TestCase):
             with patch.object(check, "INSTRUMENTATION_EXTRAS_FILE", manifest):
                 with self.assertRaisesRegex(ValueError, "unique and sorted"):
                     check.instrumentation_extras()
+
+
+class SecurityProvenanceTest(unittest.TestCase):
+    checker: ModuleType
+
+    def setUp(self) -> None:
+        spec = importlib.util.spec_from_file_location("check_version", SCRIPT)
+        assert spec is not None and spec.loader is not None
+        self.checker = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.checker)
+
+    def test_rejects_missing_export_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            properties = Path(directory) / "security-spec.properties"
+            properties.write_text(
+                "\n".join(
+                    line
+                    for line in self.checker.SECURITY_PROPERTIES_FILE.read_text().splitlines()
+                    if not line.startswith("exportProfile=")
+                ),
+                encoding="utf-8",
+            )
+            with patch.object(
+                self.checker, "SECURITY_PROPERTIES_FILE", properties
+            ):
+                with self.assertRaisesRegex(
+                    ValueError, "contract pin differs"
+                ):
+                    self.checker.check_security_provenance()
+
+    def test_rejects_modified_schema_artifacts(self) -> None:
+        paths = (
+            "beacon-otel/src/beacon_security/siem-v1.schema.json",
+            "beacon-otel/src/beacon_security/evidence.schema.json",
+            "beacon-otel/tests/security/fixtures/spec/beacon-security-siem-v1.schema.json",
+            "beacon-otel/tests/security/fixtures/spec/beacon-security-event-v2.schema.json",
+        )
+        for changed in paths:
+            with (
+                self.subTest(path=changed),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root = Path(directory)
+                for name in paths:
+                    destination = root / name
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(ROOT / name, destination)
+                (root / changed).write_text("{}", encoding="utf-8")
+                with patch.object(self.checker, "ROOT", root):
+                    with self.assertRaisesRegex(
+                        ValueError, "Security .*differs"
+                    ):
+                        self.checker.check_security_provenance()
 
 
 if __name__ == "__main__":

@@ -890,10 +890,6 @@ class RuntimeLedger:
         event["trace_availability"] = "not_guaranteed_by_trace_id"
         if event.get("trace_id") in (None, ""):
             event["trace_id"] = str(getattr(state, "trace_id", "") or "")
-        if event.get("server_span_id") in (None, ""):
-            event["server_span_id"] = str(
-                getattr(state, "server_span_id", "") or ""
-            )
         if incomplete:
             event["coverage_gaps"] = list(gaps)
             event["collection_complete"] = False

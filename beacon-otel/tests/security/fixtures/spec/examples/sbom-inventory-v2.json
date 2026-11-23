@@ -1,0 +1,15 @@
+{
+  "schema_version": 2,
+  "source": "beacon_security_sbom",
+  "event_name": "beacon.security.sbom.inventory",
+  "instance_id": "9fb15116-8d2b-4f1d-bc08-e5570928136f",
+  "observed_at": "2026-10-02T00:20:00.000Z",
+  "started_at": "2026-10-02T00:00:00.000Z",
+  "uptime_ms": 1200000,
+  "dependencies": [
+    {
+      "name": "org.example:orders-core",
+      "version": "1.2.3"
+    }
+  ]
+}
