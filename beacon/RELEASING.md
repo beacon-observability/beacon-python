@@ -6,11 +6,9 @@ The public product name is Beacon Python and the command entry point is `beacon`
 
 ## Version Source
 
-- The expanded instrumentation extras and `[all]` are currently unreleased.
-  PyPI already contains `beacon-otel==1.2.6` with the earlier five extras, so
-  assign a new product version before publishing this change. Existing PyPI
-  artifacts must not be replaced; local candidate wheels using the current
-  checkout version are for testing only.
+- Assign a new product version for every release. Existing PyPI artifacts must
+  never be replaced. Instrumentation extras and the Security SIEM envelope are
+  included starting with Beacon Python 1.3.0.
 - [version.properties](version.properties) is the only manually maintained source for the Beacon Python product version. Development versions use `X.Y.Z.devN`, release candidates use `X.Y.ZrcN`, and stable releases use `X.Y.Z`. Product release tags use `vX.Y.Z`, with `rcN` appended for release candidates, and must not collide with a pinned upstream tag. Both Beacon packages use this product version, while upstream package versions are not replaced in bulk with the Beacon version.
 - After changing the product version, run `python beacon/scripts/check-version.py --sync` to copy it into both packages and synchronize the exact `beacon-otel[profiling]` dependency version. The same command generates the individual instrumentation extras and `[all]` from [instrumentation-extras.json](instrumentation-extras.json) at the pinned Contrib version. Run the check without `--sync` during routine development and before releases to detect divergence. Package-level version files are generated copies, not a second manually maintained version source.
 - [upstream.lock.json](upstream.lock.json) records the tag and full commit for both Contrib and Core. The root [pyproject.toml](../pyproject.toml), [uv.lock](../uv.lock), and profiling dependencies are the actual build configuration. `check-version.py` verifies that this configuration matches the baseline record. Product and upstream versions remain independent. Follow the [synchronization process](UPSTREAM.md) for baseline upgrades.
