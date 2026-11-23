@@ -1,7 +1,7 @@
 # Security SIEM validation
 
 Validated locally on 2026-11-23 with CPython 3.14.3 and Security contract
-`2c15505c732708f2f0d0de47f61cda0e703dba86` (schema v2, fingerprint v1).
+`41852e7c0d6fe9c9dca04a6e8ec1ec424630fe34` (schema v2, fingerprint v1).
 The runtime implements `beacon-security-siem-v1` as its only export format.
 No format-selection setting or legacy v2 Body output is provided; v2 evidence
 is preserved inside `message`. The bundled payload and envelope schemas match the pinned shared contract
@@ -9,8 +9,10 @@ byte-for-byte; their SHA-256 values are recorded in the migration lock.
 
 ## Automated checks
 
-- Final Security regression suite: 247 passed, including 15 SIEM tests, after synchronizing the shared
-  contract and schemas. Span precedence and missing-span omission are covered.
+- Initial Security regression suite: 247 passed, including 15 SIEM tests.
+- Review follow-up: all 22 SIEM tests passed after requiring process identity,
+  including seven negative cases that remove instance_id from shared envelopes.
+  Span precedence and missing-span omission remain covered.
 - Ruff check/format and `git diff --check` passed for changed Python files.
 - Shared SIEM fixtures cover finding occurrences, unchanged/empty inventory and
   multipart inventory identity. The enriched vector deliberately expects empty

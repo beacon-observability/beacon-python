@@ -224,7 +224,7 @@ a classification, not a safety verdict.
 
 ### Security SIEM export
 
-Security exports use the [fifteen-field profile](https://github.com/beacon-observability/beacon-security-spec/blob/2c15505c732708f2f0d0de47f61cda0e703dba86/spec/siem-fields-v1.md).
+Security exports use the [fifteen-field profile](https://github.com/beacon-observability/beacon-security-spec/blob/41852e7c0d6fe9c9dca04a6e8ec1ec424630fe34/spec/siem-fields-v1.md).
 This is the only export format and requires no format-selection setting.
 The Body on the existing route contains one SIEM record per event.
 `instance_id`, `trace_id`, `span_id`, and `trace_flags` are retained at the top level for direct filtering and trace

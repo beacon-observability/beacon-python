@@ -8,7 +8,7 @@ import pytest
 from beacon_security import siem
 from beacon_security._sbom_events import dependency_snapshot
 from beacon_security.exporter import Exporter
-from jsonschema import Draft202012Validator, FormatChecker
+from jsonschema import Draft202012Validator, FormatChecker, ValidationError
 
 FIXTURES = Path(__file__).parent / "fixtures" / "spec"
 VALIDATOR = Draft202012Validator(
@@ -316,3 +316,14 @@ def test_missing_span_does_not_fabricate_export_field(
         assert "current_span_id" not in payload
     finally:
         exporter.close()
+
+
+@pytest.mark.parametrize("vector", VECTORS, ids=lambda v: v["name"])
+def test_schema_requires_process_identity(vector: dict[str, Any]) -> None:
+    event = json.loads(
+        (FIXTURES / vector["expected"]).read_text(encoding="utf-8")
+    )
+    VALIDATOR.validate(event)
+    del event["instance_id"]
+    with pytest.raises(ValidationError, match="instance_id"):
+        VALIDATOR.validate(event)
