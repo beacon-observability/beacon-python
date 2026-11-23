@@ -319,8 +319,7 @@ def test_sampling_keeps_evidence_and_existing_span_attributes_without_provider_r
             if line.strip()
         ]
         assert any(
-            '"event_name":"beacon.security.finding"' in line
-            for line in records
+            '"event_class":"security_finding"' in line for line in records
         )
         assert all(
             "always-off-query" not in line and "recorded-query" not in line

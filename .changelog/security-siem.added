@@ -1,0 +1,1 @@
+Replace Security export bodies with SIEM fields and retained process/trace correlation, preserving complete v2 evidence in message. Apply final envelope byte budgets and inventory splitting. Use span_id for the active span and remove server_span_id/current_span_id from exported evidence. No legacy output mode or format switch is retained.

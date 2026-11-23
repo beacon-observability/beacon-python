@@ -1,0 +1,69 @@
+{
+  "profile": "beacon-security-siem-v1",
+  "vectors": [
+    {
+      "name": "finding",
+      "input": "examples/finding-v2.json",
+      "resource": {
+        "service.name": "orders"
+      },
+      "context": {},
+      "expected": "examples/siem/finding.json"
+    },
+    {
+      "name": "finding-enriched",
+      "input": "examples/finding-v2.json",
+      "resource": {
+        "service.name": "orders",
+        "tenant.id": "configured-tenant"
+      },
+      "context": {
+        "tenant_id": "bound-tenant",
+        "actor": "user-42",
+        "client_ip": "192.0.2.10"
+      },
+      "expected": "examples/siem/finding-enriched.json"
+    },
+    {
+      "name": "finding-occurrence",
+      "input": "examples/finding-occurrence-v2.json",
+      "resource": {},
+      "context": {},
+      "expected": "examples/siem/finding-occurrence.json"
+    },
+    {
+      "name": "sbom-inventory",
+      "input": "examples/sbom-inventory-v2.json",
+      "resource": {
+        "service.name": "orders"
+      },
+      "context": {},
+      "expected": "examples/siem/sbom-inventory.json"
+    },
+    {
+      "name": "sbom-part-0",
+      "input": "examples/siem/inputs/sbom-part-0.json",
+      "resource": {
+        "service.name": "orders"
+      },
+      "context": {},
+      "expected": "examples/siem/sbom-part-0.json"
+    },
+    {
+      "name": "sbom-part-1",
+      "input": "examples/siem/inputs/sbom-part-1.json",
+      "resource": {
+        "service.name": "orders"
+      },
+      "context": {},
+      "expected": "examples/siem/sbom-part-1.json"
+    },
+    {
+      "name": "sbom-empty",
+      "input": "examples/siem/inputs/sbom-empty.json",
+      "resource": {},
+      "context": {},
+      "expected": "examples/siem/sbom-empty.json"
+    }
+  ]
+}

@@ -2,7 +2,7 @@ import hashlib
 import json
 from typing import Any
 
-from . import config
+from . import config, siem
 from .schema import event_record
 
 
@@ -42,9 +42,12 @@ def dependency_snapshot(event, records, identity):
     )
 
     def encode(value: Any) -> bytes:
-        return json.dumps(
-            value, ensure_ascii=False, separators=(",", ":")
-        ).encode("utf-8")
+        return siem.encode(
+            json.dumps(
+                value, ensure_ascii=False, separators=(",", ":")
+            ).encode("utf-8"),
+            identity,
+        )
 
     maximum = min(
         config.limit("beacon.security.evidence.max.bytes", 65536),
@@ -76,7 +79,8 @@ def dependency_snapshot(event, records, identity):
         raise ValueError("dependency_snapshot_envelope_exceeds_budget")
     chunks, size = [[]], overhead
     for row in rows:
-        length = len(encode(row))
+        candidate = {**split_envelope, "dependencies": [row]}
+        length = len(encode(candidate)) - overhead
         if overhead + length > maximum:
             raise ValueError("dependency_snapshot_item_exceeds_budget")
         chunk = chunks[-1]

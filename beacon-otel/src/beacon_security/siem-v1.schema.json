@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/beacon-observability/beacon-security-spec/raw/main/schemas/beacon-security-siem-v1.schema.json",
+  "title": "Beacon Security SIEM profile v1",
+  "description": "Proposed envelope, not an adopted runtime contract. Raw v2 payload remains in message.",
+  "type": "object",
+  "required": [
+    "time",
+    "event_id",
+    "event_class",
+    "source",
+    "service",
+    "tenant_id",
+    "actor",
+    "ip",
+    "action",
+    "target",
+    "target_type",
+    "outcome",
+    "status",
+    "severity",
+    "message"
+  ],
+  "properties": {
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "event_class": {
+      "type": "string",
+      "enum": [
+        "security_finding",
+        "software_inventory_info"
+      ]
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "beacon_security",
+        "beacon_security_sbom"
+      ]
+    },
+    "service": {
+      "type": "string"
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1,
+      "default": "default",
+      "description": "Use existing trusted tenant identity when available; otherwise emit default. No additional collection is required."
+    },
+    "actor": {
+      "type": "string"
+    },
+    "ip": {
+      "type": "string"
+    },
+    "action": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target_type": {
+      "type": "string",
+      "enum": [
+        "finding",
+        "process"
+      ]
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "unknown",
+        "success"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "const": "info"
+    },
+    "severity": {
+      "type": "string",
+      "const": "informational"
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Exact original serialized Security v2 payload string. Validate decoded content separately against v2."
+    },
+    "instance_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "span_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$"
+    },
+    "trace_flags": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 255
+    }
+  },
+  "additionalProperties": false,
+  "oneOf": [
+    {
+      "properties": {
+        "event_class": {
+          "const": "security_finding"
+        },
+        "source": {
+          "const": "beacon_security"
+        },
+        "target_type": {
+          "const": "finding"
+        },
+        "outcome": {
+          "const": "unknown"
+        },
+        "target": {
+          "pattern": "^finding-[0-9a-f]{64}$"
+        },
+        "action": {
+          "enum": [
+            "sql_injection",
+            "command_injection",
+            "command_execution",
+            "ssrf",
+            "http_request_input",
+            "path_traversal"
+          ]
+        }
+      }
+    },
+    {
+      "properties": {
+        "event_class": {
+          "const": "software_inventory_info"
+        },
+        "source": {
+          "const": "beacon_security_sbom"
+        },
+        "target_type": {
+          "const": "process"
+        },
+        "outcome": {
+          "const": "success"
+        },
+        "action": {
+          "const": "inventory_snapshot"
+        },
+        "actor": {
+          "const": ""
+        },
+        "ip": {
+          "const": ""
+        },
+        "event_id": {
+          "pattern": "^inventory-[0-9a-f]{64}$"
+        },
+        "target": {
+          "pattern": "^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$"
+        }
+      }
+    }
+  ]
+}

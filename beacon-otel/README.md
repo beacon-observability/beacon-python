@@ -117,9 +117,11 @@ SBOM contract is maintained in
 This wheel carries an immutable contract revision in
 [`security-spec.properties`](src/beacon_security/security-spec.properties).
 
-### Security telemetry v2
+### Security telemetry
 
-The OTel Logs output contains only two INFO events:
+The OTel Logs Body uses the SIEM fields plus process and trace correlation. Its `message` contains
+the complete serialized v2 evidence payload described below. Output contains
+only two INFO events:
 
 | `source` | `event_name` | Trigger |
 | --- | --- | --- |
@@ -129,7 +131,7 @@ The OTel Logs output contains only two INFO events:
 The inventory worker starts asynchronously and waits 300 seconds after each
 collection by default (`BEACON_SECURITY_SBOM_REFRESH_SECONDS`). A failed or
 incomplete collection emits nothing, leaving the last successful list intact.
-Each event contains `instance_id`, `observed_at`, process `started_at`,
+Each embedded payload contains `instance_id`, `observed_at`, process `started_at`,
 `uptime_ms`, and the complete current `dependencies` list. Each loaded library
 is identified by `name`, `version`, and an MD5 identity key over the compact
 JSON array `[name,version]`; the key is not a content digest. Large inventories
@@ -144,7 +146,7 @@ unsampled occurrence still reports the finding with `evidence_sampled=false`
 and `evidence_sample_reason=interval`; this is not a real truncation. Only
 actual capacity or serialization loss sets `truncated=true`.
 
-The exported body omits service/runtime/code fields already in the OTel
+The embedded payload omits service/runtime/code fields already in the OTel
 Resource, empty optional fields, fixed placeholders, `evidence_id`, and online
 `occurrences_total`. Resolved `component` data directly carries
 `name`/`version`/`hash`; unresolved components are omitted. The backend can
@@ -219,3 +221,36 @@ Detection, request deduplication, and stronger evidence upgrades still run; opti
 finding snapshots and span summaries can retain observations excluded from event export.
 This changes the previous default, which exported all three statuses. `no_evidence` remains
 a classification, not a safety verdict.
+
+### Security SIEM export
+
+Security exports use the [fifteen-field profile](https://github.com/beacon-observability/beacon-security-spec/blob/2c15505c732708f2f0d0de47f61cda0e703dba86/spec/siem-fields-v1.md).
+This is the only export format and requires no format-selection setting.
+The Body on the existing route contains one SIEM record per event.
+`instance_id`, `trace_id`, `span_id`, and `trace_flags` are retained at the top level for direct filtering and trace
+correlation. These follow the shared SIEM contract; the bundled
+[`siem-v1.schema.json`](src/beacon_security/siem-v1.schema.json) defines this
+runtime output. `span_id` identifies the span active when the finding was
+detected. The embedded evidence uses the same field name, defined by
+[`evidence.schema.json`](src/beacon_security/evidence.schema.json). Missing trace context is omitted, never fabricated. OTel scope,
+INFO severity, event attributes and trace associations remain intact. Diagnostic
+evidence JSONL uses the same Body.
+The embedded `message` preserves the exact serialized v2 event after existing
+sampling/truncation; it does not archive the entire OTLP record.
+
+Service and explicitly configured `tenant.id` come from Resource identity.
+Missing tenant identity becomes `default`; actor and client IP remain empty
+because trusted request enrichment is unavailable. Request headers are not used
+for authorization or enrichment. Finding outcome stays `unknown`, inventory
+outcome is `success` for local collection only, and severity is `informational`.
+
+Final UTF-8 envelope bytes count toward record and rate budgets. Inventory
+splitting measures the final envelope and retains each dependency exactly once.
+If an envelope cannot fit after existing v2 evidence reduction, export fails
+explicitly (`security.failed` or `sbom.failed` delivery counters); `message`
+is never silently shortened. Consumers must read the SIEM envelope and
+parse `message` for evidence and multipart inventory assembly. Shared-vector
+and runtime tests cover the projection. A local OTel SDK → OTLP/HTTP →
+Collector Contrib 0.135.0 → file-exporter path has been verified for both event
+families; production backend acceptance has not been established. The bundled
+schemas are copied from the pinned shared contract.

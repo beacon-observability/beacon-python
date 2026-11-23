@@ -1,0 +1,20 @@
+{
+  "time": "2026-10-02T00:00:00.000Z",
+  "event_id": "ev-6c196664-ef4a-4c11-83ed-b932da1e5a96",
+  "event_class": "security_finding",
+  "source": "beacon_security",
+  "service": "",
+  "tenant_id": "default",
+  "actor": "",
+  "ip": "",
+  "action": "sql_injection",
+  "target": "finding-555321b3086c32e527cfd1f07854e1c8a81c848704d399c3124865fb4e734180",
+  "target_type": "finding",
+  "outcome": "unknown",
+  "status": "info",
+  "severity": "informational",
+  "message": "{\n  \"schema_version\": 2,\n  \"source\": \"beacon_security\",\n  \"event_name\": \"beacon.security.finding\",\n  \"observed_at\": \"2026-10-02T00:00:00.000Z\",\n  \"instance_id\": \"9fb15116-8d2b-4f1d-bc08-e5570928136f\",\n  \"finding_id\": \"finding-555321b3086c32e527cfd1f07854e1c8a81c848704d399c3124865fb4e734180\",\n  \"fingerprint_version\": 1,\n  \"rule\": \"sql_injection\",\n  \"precision\": \"exact\",\n  \"trace_id\": \"0123456789abcdef0123456789abcdef\",\n  \"occurrence_id\": \"ev-6c196664-ef4a-4c11-83ed-b932da1e5a96\",\n  \"attack_evidence\": {\n    \"status\": \"no_evidence\",\n    \"reason\": \"sql_data_only\"\n  },\n  \"request\": {\n    \"method\": \"GET\",\n    \"route\": \"/orders\",\n    \"status_code\": 200\n  },\n  \"sink\": {\n    \"function\": \"java.sql.Statement.executeQuery\",\n    \"role\": \"sql_template\",\n    \"location\": \"example.Orders#find(Orders.java:42)\"\n  },\n  \"component\": {\n    \"name\": \"org.example:orders-core\",\n    \"version\": \"1.2.3\"\n  },\n  \"evidence_sampled\": false,\n  \"collection_complete\": true,\n  \"evidence_sample_reason\": \"interval\",\n  \"span_id\": \"fedcba9876543210\"\n}\n",
+  "instance_id": "9fb15116-8d2b-4f1d-bc08-e5570928136f",
+  "trace_id": "0123456789abcdef0123456789abcdef",
+  "span_id": "fedcba9876543210"
+}

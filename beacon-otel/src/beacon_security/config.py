@@ -151,6 +151,7 @@ def identity() -> dict:
     provider = trace.get_tracer_provider()
     resource = getattr(getattr(provider, "resource", None), "attributes", {})
     names = (
+        "tenant.id",
         "service.name",
         "service.version",
         "service.namespace",

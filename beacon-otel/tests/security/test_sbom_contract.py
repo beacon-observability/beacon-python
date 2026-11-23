@@ -14,8 +14,8 @@ from jsonschema import Draft202012Validator, FormatChecker
 
 _EVENT_SCHEMA = json.loads(
     (
-        Path(__file__).resolve().parent
-        / "fixtures/spec/beacon-security-event-v2.schema.json"
+        Path(__file__).resolve().parents[2]
+        / "src/beacon_security/evidence.schema.json"
     ).read_text()
 )
 _EVENT_VALIDATOR = Draft202012Validator(

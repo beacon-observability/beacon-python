@@ -1,0 +1,18 @@
+{
+  "time": "2026-10-02T00:25:00.000Z",
+  "event_id": "inventory-7f8a64f8362049441a37dbdfbbfe0e2e78737ccb1b083486448964345651831e",
+  "event_class": "software_inventory_info",
+  "source": "beacon_security_sbom",
+  "service": "",
+  "tenant_id": "default",
+  "actor": "",
+  "ip": "",
+  "action": "inventory_snapshot",
+  "target": "9fb15116-8d2b-4f1d-bc08-e5570928136f",
+  "target_type": "process",
+  "outcome": "success",
+  "status": "info",
+  "severity": "informational",
+  "message": "{\n  \"schema_version\": 2,\n  \"source\": \"beacon_security_sbom\",\n  \"event_name\": \"beacon.security.sbom.inventory\",\n  \"instance_id\": \"9fb15116-8d2b-4f1d-bc08-e5570928136f\",\n  \"observed_at\": \"2026-10-02T00:25:00.000Z\",\n  \"started_at\": \"2026-10-02T00:00:00.000Z\",\n  \"uptime_ms\": 1500000,\n  \"dependencies\": []\n}\n",
+  "instance_id": "9fb15116-8d2b-4f1d-bc08-e5570928136f"
+}

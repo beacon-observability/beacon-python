@@ -215,12 +215,6 @@
         "trace_id": {
           "type": "string"
         },
-        "server_span_id": {
-          "type": "string"
-        },
-        "current_span_id": {
-          "type": "string"
-        },
         "precision": {
           "type": "string"
         },
@@ -260,6 +254,16 @@
         "triage": {
           "type": "object",
           "minProperties": 1
+        },
+        "span_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{16}$",
+          "description": "Current invocation span ID. Retained even when it is the HTTP server span."
+        },
+        "trace_flags": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
         }
       },
       "not": {

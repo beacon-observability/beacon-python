@@ -77,7 +77,8 @@ def project_event(event: Mapping[str, Any]) -> dict[str, Any] | None:
     )
     optional = (
         "trace_id",
-        "server_span_id",
+        "span_id",
+        "trace_flags",
         "precision",
         "evidence_sample_reason",
         "truncation_reason",
@@ -90,9 +91,6 @@ def project_event(event: Mapping[str, Any]) -> dict[str, Any] | None:
         "triage",
     )
     result.update(_fields(event, optional))
-    current_span = event.get("current_span_id")
-    if _present(current_span) and current_span != event.get("server_span_id"):
-        result["current_span_id"] = current_span
     request = _fields(
         event.get("request"), ("method", "route", "status_code", "error_type")
     )
