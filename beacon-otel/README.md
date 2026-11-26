@@ -1,8 +1,10 @@
 # Beacon Python
 
-Beacon Python 1.3.0 includes individual instrumentation extras and `[all]`.
-Upgrading from 1.2.7 also changes the Security event Body to the SIEM envelope;
-see the [release notes](../beacon/releases/1.3.0.md) before updating consumers.
+Beacon Python 1.4.0 sends compact v2 Security JSON directly in the OTel Logs
+Body. Event time and occurrence identity move to native log metadata; the 1.3.0
+SIEM envelope is no longer produced. Read the [release notes](../beacon/releases/1.4.0.md)
+before updating consumers. Individual instrumentation extras and `[all]` remain
+available.
 
 `beacon-otel` is the main Beacon Python installation package. Install the base
 package in the application's Python environment:
