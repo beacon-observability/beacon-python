@@ -174,6 +174,10 @@ def test_byte_reserves_and_oversized_rejection_keep_total_bound(
         "BEACON_SECURITY_EXPORT_SECURITY_BYTES_PER_SECOND", "1000"
     )
     monkeypatch.setattr(
+        "beacon_security.log_binding.record_size",
+        lambda body, _event: len(body),
+    )
+    monkeypatch.setattr(
         exporter,
         "_encode_record_result",
         lambda record: (b"x" * record["run"]["size"], False),
@@ -278,7 +282,9 @@ def test_real_json_byte_budget_preserves_late_priority_records(
     for index in range(1000, 1008):
         exporter.emit(event(index))
     first = exporter._security_queue.queue[0][0]
-    size = len(exporter._encode_record(first.event))
+    from beacon_security.log_binding import record_size
+
+    size = record_size(exporter._encode_record(first.event), first.event)
     monkeypatch.setenv(
         "BEACON_SECURITY_EXPORT_SECURITY_BYTES_PER_SECOND", str(size * 10)
     )

@@ -369,7 +369,10 @@ def _identity():
 
 def _read_jsonl(path: Path):
     return [
-        json.loads(json.loads(line)["message"])
+        {
+            **json.loads(json.loads(line)["body"]),
+            "occurrence_id": json.loads(line)["attributes"]["event_id"],
+        }
         for line in path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
@@ -457,7 +460,7 @@ def test_evidence_file_is_independent_of_local_snapshots(
     assert not (tmp_path / "findings.json").exists()
 
 
-def test_exporter_emits_siem_with_v2_evidence_and_drops_oversized_records(
+def test_exporter_emits_bound_v2_evidence_and_drops_oversized_records(
     monkeypatch, tmp_path
 ):
     from beacon_security.exporter import Exporter
@@ -488,10 +491,7 @@ def test_exporter_emits_siem_with_v2_evidence_and_drops_oversized_records(
             exporter.emit({"event_name": retired})
         assert exporter.flush(timeout=5.0)
         records = logs.get_finished_logs()
-        bodies = [
-            json.loads(json.loads(item.log_record.body)["message"])
-            for item in records
-        ]
+        bodies = [json.loads(item.log_record.body) for item in records]
         assert sorted(
             (item["event_name"], item["source"]) for item in bodies
         ) == sorted(
@@ -514,9 +514,7 @@ def test_exporter_emits_siem_with_v2_evidence_and_drops_oversized_records(
             _finding_event("reduced", sources=[{"detail": "x" * 4096}])
         )
         assert exporter.flush(timeout=5.0)
-        reduced = json.loads(
-            json.loads(logs.get_finished_logs()[0].log_record.body)["message"]
-        )
+        reduced = json.loads(logs.get_finished_logs()[0].log_record.body)
         assert reduced["event_name"] == "beacon.security.finding"
         assert reduced["truncated"] is True
         assert reduced["evidence_sampled"] is False
@@ -584,16 +582,12 @@ def test_exporter_reuses_existing_otel_provider_and_bridges_enqueued_trace_conte
         matching = [
             record
             for record in records
-            if json.loads(
-                json.loads(str(getattr(record, "log_record", record).body))[
-                    "message"
-                ]
-            ).get("occurrence_id")
+            if getattr(record, "log_record", record).attributes.get("event_id")
             == "ev-product-context"
         ]
         assert len(matching) == 1
         log_record = getattr(matching[0], "log_record", matching[0])
-        body = json.loads(json.loads(str(log_record.body))["message"])
+        body = json.loads(str(log_record.body))
         assert body["schema_version"] == 2
         assert body["source"] == "beacon_security"
         assert "severity_text" not in body

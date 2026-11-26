@@ -15,7 +15,7 @@ from dataclasses import field as dataclass_field
 from pathlib import Path
 from typing import Any
 
-from . import config, siem
+from . import config, log_binding
 from .ledger import RuntimeLedger
 from .schema import PRODUCT, event_record
 from .telemetry import FINDING, INVENTORY, project_event
@@ -482,14 +482,22 @@ class Exporter:
                     )
                 encoded, truncated = self._encode_record_result(entry.event)
                 payload = (
-                    json.loads(json.loads(encoded)["message"])
+                    {
+                        **json.loads(encoded),
+                        **{
+                            key: entry.event[key]
+                            for key in ("observed_at", "occurrence_id")
+                            if key in entry.event
+                        },
+                    }
                     if truncated
                     else entry.event
                 )
+                record_bytes = log_binding.record_size(encoded, payload)
                 if truncated:
                     self._record_record_truncation(entry.event, channel)
                 if channel == "security" and not priority_budget.admit(
-                    entry.priority, len(encoded)
+                    entry.priority, record_bytes
                 ):
                     self._count(
                         f"security.priority_{entry.priority}.budget_exceeded"
@@ -498,9 +506,9 @@ class Exporter:
                     continue
                 if channel != "security" and (
                     events >= events_limit
-                    or bytes_used + len(encoded) > bytes_limit
+                    or bytes_used + record_bytes > bytes_limit
                 ):
-                    if channel != "sbom" or len(encoded) > bytes_limit:
+                    if channel != "sbom" or record_bytes > bytes_limit:
                         self._loss(channel + ".budget_exceeded", entry.event)
                         continue
                     self._count("sbom.budget_deferred")
@@ -514,7 +522,7 @@ class Exporter:
                         time.sleep(0.025)
                     second, events, bytes_used = int(time.monotonic()), 0, 0
                 events += 1
-                bytes_used += len(encoded)
+                bytes_used += record_bytes
                 # A byte-budget reduction is still an incomplete security
                 # record.  Preserve it in the local evidence stream even if
                 # the caller did not mark the original event as evidence;
@@ -559,12 +567,21 @@ class Exporter:
             with self._writer_lock:
                 if self._writer is None:
                     self._open_writer()
-                if self._file_bytes + len(encoded) + 1 > self._rotate_bytes:
+                diagnostic = _encode_json(
+                    {
+                        "time_unix_nano": str(
+                            log_binding.event_time(event["observed_at"])
+                        ),
+                        "body": body,
+                        "attributes": log_binding.attributes(event),
+                    }
+                )
+                if self._file_bytes + len(diagnostic) + 1 > self._rotate_bytes:
                     self._rotate()
-                self._writer.write(body)
+                self._writer.write(diagnostic.decode("utf-8"))
                 self._writer.write("\n")
                 self._writer.flush()
-                self._file_bytes += len(encoded) + 1
+                self._file_bytes += len(diagnostic) + 1
                 self._last_file_success = time.time()
                 self._count("beacon.security.file_written")
         except BaseException as error:
@@ -579,11 +596,10 @@ class Exporter:
     def _encode_record_result(
         self, event: Mapping[str, Any]
     ) -> tuple[bytes, bool]:
-        encoded = _encode_json(event)
+        log_binding.event_time(event["observed_at"])
+        log_binding.attributes(event)
+        encoded = _encode_json(log_binding.payload(event))
         if len(encoded) <= self._max_bytes:
-            encoded = siem.encode(encoded, self.ledger.identity)
-            if len(encoded) > self._max_bytes:
-                raise ValueError("siem_record_limit")
             return encoded, False
 
         reduced = dict(event)
@@ -595,7 +611,7 @@ class Exporter:
         reduced["evidence_sample_reason"] = "record_byte_limit"
         reduced["truncated"] = True
         reduced["truncation_reason"] = "record_byte_limit"
-        encoded = siem.encode(_encode_json(reduced), self.ledger.identity)
+        encoded = _encode_json(log_binding.payload(reduced))
         if len(encoded) <= self._max_bytes:
             return encoded, True
 
@@ -757,13 +773,10 @@ class Exporter:
             raise RuntimeError("otel_logs_unavailable")
         context = self._otel_context(span_context, event)
         kwargs: dict[str, Any] = {
-            "timestamp": time.time_ns(),
+            "timestamp": log_binding.event_time(event["observed_at"]),
             "body": body,
             "severity_text": "INFO",
-            "attributes": {
-                "event.name": str(event.get("event_name", "")),
-                "source": event["source"],
-            },
+            "attributes": log_binding.attributes(event),
             "context": context,
             "event_name": str(event.get("event_name", "")),
         }

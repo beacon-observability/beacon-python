@@ -1,0 +1,9 @@
+{
+  "time_unix_nano": "1790899200000000000",
+  "body": "{\"schema_version\":2,\"source\":\"beacon_security\",\"event_name\":\"beacon.security.finding\",\"instance_id\":\"9fb15116-8d2b-4f1d-bc08-e5570928136f\",\"finding_id\":\"finding-555321b3086c32e527cfd1f07854e1c8a81c848704d399c3124865fb4e734180\",\"fingerprint_version\":1,\"rule\":\"sql_injection\",\"precision\":\"exact\",\"trace_id\":\"0123456789abcdef0123456789abcdef\",\"sources\":[{\"id\":\"src-1\",\"type\":\"http.request.parameter\",\"name\":\"customer\",\"location\":\"example.http.Request.getParameter\",\"value_type\":\"string\",\"value_length\":5},{\"id\":\"src-2\",\"type\":\"http.request.header\",\"name\":\"x-tenant\",\"location\":\"example.http.Request.getHeader\",\"value_type\":\"string\",\"value_length\":4}],\"propagation\":[{\"id\":1,\"parent_id\":null,\"source_id\":\"src-1\",\"operation\":\"source\",\"location\":\"example.http.Request.getParameter\"}],\"ranges\":[{\"source_id\":\"src-1\",\"start\":46,\"end\":51,\"exact\":true,\"unit\":\"utf16_code_unit\"}],\"stack\":[\"example.Orders.find(Orders.java:42)\"],\"attack_evidence\":{\"status\":\"no_evidence\",\"reason\":\"sql_data_only\"},\"request\":{\"method\":\"GET\",\"route\":\"/orders\",\"status_code\":200},\"sink\":{\"function\":\"java.sql.Statement.executeQuery\",\"role\":\"sql_template\",\"location\":\"example.Orders#find(Orders.java:42)\"},\"component\":{\"name\":\"org.example:orders-core\",\"version\":\"1.2.3\"},\"evidence_sampled\":true,\"collection_complete\":true,\"span_id\":\"fedcba9876543210\"}",
+  "attributes": {
+    "event_id": "ev-6c196664-ef4a-4c11-83ed-b932da1e5a95",
+    "source": "beacon_security",
+    "event.name": "beacon.security.finding"
+  }
+}

@@ -294,13 +294,15 @@ def check_security_provenance() -> None:
         "Packaged Security contract pin differs from migration lock",
     )
     require(
-        contract["exportProfile"] == "beacon-security-siem-v1",
+        contract["exportProfile"] == "beacon-security-log-body-v1",
         "Unexpected Security export profile",
     )
     fixtures = {
         **SECURITY_FIXTURES,
         "exportProfileSchemaSha256": ROOT
-        / "beacon-otel/src/beacon_security/siem-v1.schema.json",
+        / "beacon-otel/src/beacon_security/log-body-v1.schema.json",
+        "logRecordSchemaSha256": ROOT
+        / "beacon-otel/tests/security/fixtures/spec/beacon-security-log-record-v1.schema.json",
         "evidenceSchemaSha256": ROOT
         / "beacon-otel/src/beacon_security/evidence.schema.json",
         "schemaSha256": (
@@ -319,10 +321,10 @@ def check_security_provenance() -> None:
     require(
         (
             ROOT
-            / "beacon-otel/tests/security/fixtures/spec/beacon-security-siem-v1.schema.json"
+            / "beacon-otel/tests/security/fixtures/spec/beacon-security-log-body-v1.schema.json"
         ).read_bytes()
         == fixtures["exportProfileSchemaSha256"].read_bytes(),
-        "Security SIEM fixture differs from packaged schema",
+        "Security log Body fixture differs from packaged schema",
     )
 
 
@@ -416,6 +418,8 @@ def check_wheel(path: Path, version: str, baseline: tuple[str, str]) -> None:
         for packaged in (
             "beacon_security/__init__.py",
             "beacon_security/security-spec.properties",
+            "beacon_security/log_binding.py",
+            "beacon_security/log-body-v1.schema.json",
         ):
             require(packaged in wheel_files, f"Wheel is missing {packaged}")
         require(

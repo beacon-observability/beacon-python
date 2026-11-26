@@ -17,7 +17,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 _SCHEMA = json.loads(
     (
         Path(__file__).resolve().parents[2]
-        / "src/beacon_security/evidence.schema.json"
+        / "src/beacon_security/log-body-v1.schema.json"
     ).read_text()
 )
 _VALIDATOR = Draft202012Validator(_SCHEMA, format_checker=FormatChecker())
@@ -214,11 +214,9 @@ def test_lightweight_occurrences_reach_otlp_http(
             )
         assert exporter.flush(timeout=5)
         findings = [
-            (log, json.loads(json.loads(log.body.string_value)["message"]))
+            (log, json.loads(log.body.string_value))
             for log in received
-            if json.loads(json.loads(log.body.string_value)["message"]).get(
-                "event_name"
-            )
+            if json.loads(log.body.string_value).get("event_name")
             == "beacon.security.finding"
         ]
         indices = (1, 2, 3) if include_no_evidence or not fragments else (2,)
@@ -229,9 +227,16 @@ def test_lightweight_occurrences_reach_otlp_http(
         # each occurrence by its own trace identity, not global FIFO order.
         findings.sort(key=lambda item: item[1]["trace_id"])
         assert len({event["finding_id"] for _, event in findings}) == 1
-        assert len({event["occurrence_id"] for _, event in findings}) == len(
-            indices
-        )
+        assert len(
+            {
+                next(
+                    a.value.string_value
+                    for a in log.attributes
+                    if a.key == "event_id"
+                )
+                for log, _ in findings
+            }
+        ) == len(indices)
         assert [event["evidence_sampled"] for _, event in findings] == [
             [True, bool(fragments), False][index - 1] for index in indices
         ]

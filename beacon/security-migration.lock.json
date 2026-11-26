@@ -7,13 +7,14 @@
   },
   "contract": {
     "repository": "https://github.com/beacon-observability/beacon-security-spec",
-    "commit": "41852e7c0d6fe9c9dca04a6e8ec1ec424630fe34",
+    "commit": "d9d76e5a41d974d294bb596e06918bb954319bf6",
     "schemaVersion": 2,
     "fingerprintVersion": 1,
     "schemaSha256": "e8051b48413c3a430dc2f0ea8cd4e24414bb58a6b082b2786602d98a82ab02e7",
     "fingerprintSha256": "860b1b14e8019f699764b238f0d744b649d259d39f3f3638f02ae8db68cbabc2",
-    "exportProfile": "beacon-security-siem-v1",
-    "exportProfileSchemaSha256": "6015b0d4a0ac13a42bd4655a17d248bec70e39c80b1e8ae5db44e5fb6de53e8f",
-    "evidenceSchemaSha256": "e8051b48413c3a430dc2f0ea8cd4e24414bb58a6b082b2786602d98a82ab02e7"
+    "exportProfile": "beacon-security-log-body-v1",
+    "exportProfileSchemaSha256": "5a46ed5600234f54a81d682b1a413ffacbcc0b1b4580f70a76d608f080b187ec",
+    "evidenceSchemaSha256": "e8051b48413c3a430dc2f0ea8cd4e24414bb58a6b082b2786602d98a82ab02e7",
+    "logRecordSchemaSha256": "d8e0b029c7372f6cb0c7ccf7207be27f8ac347fc14a7f8b953c5fa020ae463d6"
   }
 }

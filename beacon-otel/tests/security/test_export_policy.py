@@ -64,10 +64,10 @@ def test_export_policy_covers_otel_jsonl_and_queue_budgets(
     } == expected
     assert len(logged) == len(expected) + 1
     records = [
-        json.loads(json.loads(line)["message"])
+        json.loads(line)["attributes"]
         for line in evidence.read_text().splitlines()
     ]
-    assert {e["occurrence_id"] for e in records} == expected
+    assert {e["event_id"] for e in records} == expected
     assert exporter.delivery()["counters"]["security.queued"] == len(expected)
     assert exporter.delivery()["dropped"] == 0
 
