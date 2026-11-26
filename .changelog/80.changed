@@ -1,0 +1,1 @@
+Align Beacon Security export with the pinned native log binding: preserve compact v2 Body structure, move event time and occurrence identity into OTel metadata, and update inventory byte planning and diagnostic JSONL.

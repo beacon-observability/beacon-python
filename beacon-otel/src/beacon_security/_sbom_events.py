@@ -2,7 +2,7 @@ import hashlib
 import json
 from typing import Any
 
-from . import config, siem
+from . import config, log_binding
 from .schema import event_record
 
 
@@ -42,16 +42,12 @@ def dependency_snapshot(event, records, identity):
     )
 
     def encode(value: Any) -> bytes:
-        return siem.encode(
-            json.dumps(
-                value, ensure_ascii=False, separators=(",", ":")
-            ).encode("utf-8"),
-            identity,
-        )
+        return log_binding.encode(value)
 
     maximum = min(
         config.limit("beacon.security.evidence.max.bytes", 65536),
-        config.limit("beacon.security.export.sbom.bytes-per-second", 262144),
+        config.limit("beacon.security.export.sbom.bytes-per-second", 262144)
+        - log_binding.metadata_size(envelope),
     )
     envelope = {
         key: envelope[key]

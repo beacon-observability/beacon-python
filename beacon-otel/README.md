@@ -157,8 +157,9 @@ This wheel carries an immutable contract revision in
 
 ### Security telemetry
 
-The OTel Logs Body uses the SIEM fields plus process and trace correlation. Its `message` contains
-the complete serialized v2 evidence payload described below. Output contains
+The OTel Logs Body contains one compact v2 JSON object. Event time is carried
+only by native `time_unix_nano`; the finding occurrence ID is carried only by
+LogRecord `attributes.event_id`. All other v2 fields retain their existing paths. Output contains
 only two INFO events:
 
 | `source` | `event_name` | Trigger |
@@ -260,35 +261,36 @@ finding snapshots and span summaries can retain observations excluded from event
 This changes the previous default, which exported all three statuses. `no_evidence` remains
 a classification, not a safety verdict.
 
-### Security SIEM export
+### Security log export
 
-Security exports use the [fifteen-field profile](https://github.com/beacon-observability/beacon-security-spec/blob/41852e7c0d6fe9c9dca04a6e8ec1ec424630fe34/spec/siem-fields-v1.md).
-This is the only export format and requires no format-selection setting.
-The Body on the existing route contains one SIEM record per event.
-`instance_id`, `trace_id`, `span_id`, and `trace_flags` are retained at the top level for direct filtering and trace
-correlation. These follow the shared SIEM contract; the bundled
-[`siem-v1.schema.json`](src/beacon_security/siem-v1.schema.json) defines this
-runtime output. `span_id` identifies the span active when the finding was
-detected. The embedded evidence uses the same field name, defined by
-[`evidence.schema.json`](src/beacon_security/evidence.schema.json). Missing trace context is omitted, never fabricated. OTel scope,
-INFO severity, event attributes and trace associations remain intact. Diagnostic
-evidence JSONL uses the same Body.
-The embedded `message` preserves the exact serialized v2 event after existing
-sampling/truncation; it does not archive the entire OTLP record.
+Security exports follow the pinned [log binding](https://github.com/beacon-observability/beacon-security-spec/blob/d9d76e5a41d974d294bb596e06918bb954319bf6/spec/log-record-binding.md).
+Body is compact, single-line UTF-8 JSON validated by
+[`log-body-v1.schema.json`](src/beacon_security/log-body-v1.schema.json).
+There is no SIEM envelope or `message` wrapper. `schema_version` stays 2;
+fingerprint version 1 is unchanged. Body omits only `observed_at` and
+`occurrence_id` from the logical v2 event. `source`, `event_name`, evidence,
+request details, dependencies and existing correlation fields retain their paths.
 
-Service and explicitly configured `tenant.id` come from Resource identity.
-Missing tenant identity becomes `default`; actor and client IP remain empty
-because trusted request enrichment is unavailable. Request headers are not used
-for authorization or enrichment. Finding outcome stays `unknown`, inventory
-outcome is `success` for local collection only, and severity is `informational`.
+Native event time is derived exactly from `observed_at`, retaining up to nine
+fractional digits. Invalid, unset or signed-int64-overflowing times fail export
+explicitly instead of using flush time. Findings move their occurrence ID to
+LogRecord `event_id`; inventory uses the unchanged deterministic SHA-256 ID per
+collection and part. `source` and `event.name` remain LogRecord attributes.
+Resource, scope, INFO severity, transport and trace/span associations are unchanged.
+`span_id` identifies the span active at detection; missing context is omitted.
 
-Final UTF-8 envelope bytes count toward record and rate budgets. Inventory
-splitting measures the final envelope and retains each dependency exactly once.
-If an envelope cannot fit after existing v2 evidence reduction, export fails
-explicitly (`security.failed` or `sbom.failed` delivery counters); `message`
-is never silently shortened. Consumers must read the SIEM envelope and
-parse `message` for evidence and multipart inventory assembly. Shared-vector
-and runtime tests cover the projection. A local OTel SDK → OTLP/HTTP →
-Collector Contrib 0.135.0 → file-exporter path has been verified for both event
-families; production backend acceptance has not been established. The bundled
-schemas are copied from the pinned shared contract.
+Record Body limits and multipart planning measure final compact UTF-8 Body bytes.
+Export rate budgets also reserve native metadata and attribute bytes; Resource
+and request batching remain with the OTLP exporter. Inventory splitting retains
+each dependency exactly once. Existing evidence
+sampling and declared byte-limit reduction apply before serialization; events
+that still do not fit fail explicitly (`security.failed` or `sbom.failed`).
+Diagnostic evidence JSONL stores `time_unix_nano` as a decimal string, the exact
+Body string in `body`, and LogRecord `attributes` outside Body, followed by one LF.
+This diagnostic wrapper is never transmitted as the OTLP Body.
+
+Receivers must read time and occurrence identity from native metadata and parse
+Body once for all other fields. Inventory assembly uses Body `instance_id`,
+native event time, and Body `part_index`/`part_count`. Historical SIEM-wrapped
+records require their original decoder. Producer and receiver adoption must be
+coordinated; production backend compatibility is not established by local tests.

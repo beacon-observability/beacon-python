@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/beacon-observability/beacon-security-spec/raw/main/schemas/beacon-security-log-record-v1.schema.json",
+  "title": "Beacon Security logical LogRecord binding v1",
+  "description": "Conformance representation only, not OTLP protobuf JSON or a Body wrapper. Validate decoded body against the log Body binding schema.",
+  "type": "object",
+  "required": [
+    "time_unix_nano",
+    "body",
+    "attributes"
+  ],
+  "properties": {
+    "time_unix_nano": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]{0,18}$",
+      "description": "Native LogRecord Unix epoch nanoseconds from logical input observed_at (omitted from Body), range 1..9223372036854775807. Decimal string in these logical JSON examples only; the OTLP protobuf field is uint64. Validate the numeric range and correspondence to the logical input time before Body compaction separately."
+    },
+    "body": {
+      "type": "string",
+      "minLength": 2,
+      "description": "One compact v2 event object with observed_at and occurrence_id omitted per the log Body binding schema. No literal CR/LF, trailing newline, or SIEM wrapper.",
+      "not": {
+        "pattern": "[\\r\\n]"
+      }
+    },
+    "attributes": {
+      "type": "object",
+      "required": [
+        "event_id",
+        "source"
+      ],
+      "properties": {
+        "event_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "beacon_security",
+            "beacon_security_sbom"
+          ]
+        },
+        "event.name": {
+          "type": "string",
+          "enum": [
+            "beacon.security.finding",
+            "beacon.security.sbom.inventory"
+          ]
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

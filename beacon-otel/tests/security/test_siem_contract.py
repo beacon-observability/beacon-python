@@ -5,15 +5,23 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from beacon_security import siem
+from beacon_security import log_binding, siem
 from beacon_security._sbom_events import dependency_snapshot
 from beacon_security.exporter import Exporter
 from jsonschema import Draft202012Validator, FormatChecker, ValidationError
 
 FIXTURES = Path(__file__).parent / "fixtures" / "spec"
-VALIDATOR = Draft202012Validator(
+SIEM_VALIDATOR = Draft202012Validator(
     json.loads(
         (Path(siem.__file__).with_name("siem-v1.schema.json")).read_text()
+    ),
+    format_checker=FormatChecker(),
+)
+VALIDATOR = Draft202012Validator(
+    json.loads(
+        (
+            Path(log_binding.__file__).with_name("log-body-v1.schema.json")
+        ).read_text()
     ),
     format_checker=FormatChecker(),
 )
@@ -41,7 +49,7 @@ def test_shared_vectors_without_unavailable_request_enrichment(
     for key in ("trace_id", "span_id"):
         if key in json.loads(raw):
             assert result[key] == json.loads(raw)[key]
-    VALIDATOR.validate(result)
+    SIEM_VALIDATOR.validate(result)
     assert set(result) == set(expected) | (
         set(json.loads(raw)) & set(siem.CORRELATION_FIELDS)
     )
@@ -63,7 +71,7 @@ def test_raw_preservation_unicode_escaping_and_absent_identity() -> None:
     assert result["outcome"] == "unknown"
     assert result["tenant_id"] == "default"
     assert result["service"] == result["actor"] == result["ip"] == ""
-    VALIDATOR.validate(result)
+    SIEM_VALIDATOR.validate(result)
 
 
 def test_export_boundary_and_final_byte_limit(
@@ -85,22 +93,33 @@ def test_export_boundary_and_final_byte_limit(
         assert len(logged) == 1
         result = json.loads(logged[0])
         VALIDATOR.validate(result)
-        assert result["service"] == "orders"
-        assert result["tenant_id"] == "configured-tenant"
-        raw = result["message"]
-        assert json.loads(raw)["finding_id"] == body["finding_id"]
-        # v2 fits, but the lossless SIEM envelope does not: explicit rejection.
-        exporter._max_bytes = len(raw.encode("utf-8"))
+        assert result["finding_id"] == body["finding_id"]
+        assert "message" not in result
+        assert "observed_at" not in result
+        assert "occurrence_id" not in result
+        exporter._max_bytes = len(logged[0].encode("utf-8"))
         exporter.emit(body, evidence=True)
         assert exporter.flush(5)
-        assert len(logged) == 1
+        assert len(logged) == 2
+        exporter._max_bytes = 1
+        exporter.emit(body, evidence=True)
+        assert exporter.flush(5)
+        assert len(logged) == 2
         assert exporter.delivery()["counters"]["security.failed"] == 1
-        assert (tmp_path / "events.jsonl").read_text().splitlines() == logged
+        diagnostics = [
+            json.loads(line)
+            for line in (tmp_path / "events.jsonl").read_text().splitlines()
+        ]
+        assert [row["body"] for row in diagnostics] == logged
+        assert all(
+            row["attributes"]["event_id"] == body["occurrence_id"]
+            for row in diagnostics
+        )
     finally:
         exporter.close()
 
 
-def test_inventory_multipart_uses_final_envelope_bytes(
+def test_inventory_multipart_uses_final_body_bytes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("BEACON_SECURITY_EXPORT_NO_EVIDENCE_ENABLED", "true")
@@ -127,22 +146,33 @@ def test_inventory_multipart_uses_final_envelope_bytes(
         {row["name"] for event in events for row in event["dependencies"]}
     ) == len(records)
     ids = set()
+    timestamps = set()
     for index, event in enumerate(events):
         assert event["part_index"] == index
         assert event["part_count"] == len(events)
-        raw = json.dumps(
-            event, ensure_ascii=False, separators=(",", ":")
-        ).encode()
-        encoded = siem.encode(raw, IDENTITY)
+        encoded = log_binding.encode(event)
         assert len(encoded) <= 1500
         result = json.loads(encoded)
         VALIDATOR.validate(result)
-        ids.add(result["event_id"])
+        ids.add(log_binding.attributes(event)["event_id"])
+        timestamps.add(log_binding.event_time(event["observed_at"]))
     assert len(ids) == len(events)
+    assert len(timestamps) == 1
 
 
+@pytest.mark.parametrize(
+    "fixture",
+    [
+        "finding-v2.json",
+        "finding-occurrence-v2.json",
+        "sbom-inventory-v2.json",
+        "siem/inputs/sbom-empty.json",
+        "siem/inputs/sbom-part-0.json",
+        "siem/inputs/sbom-part-1.json",
+    ],
+)
 def test_real_otel_http_transport(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    fixture: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     import threading
     from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -186,7 +216,9 @@ def test_real_otel_http_transport(
     exporter = Exporter(IDENTITY, "transport", tmp_path)
     exporter._otel_logger = provider.get_logger("io.beacon.security")
     try:
-        event = json.loads((FIXTURES / "examples/finding-v2.json").read_text())
+        event = json.loads((FIXTURES / "examples" / fixture).read_text())
+        if "span_id" in event:
+            event.setdefault("trace_flags", 0)
         exporter.emit(event)
         assert exporter.flush(5)
         assert len(received) == 1
@@ -198,19 +230,31 @@ def test_real_otel_http_transport(
         assert record.severity_number == 9
         result = json.loads(record.body.string_value)
         VALIDATOR.validate(result)
-        assert result["event_id"] == event["occurrence_id"]
-        assert result["trace_id"] == event["trace_id"]
-        assert result["span_id"] == event["span_id"]
-        assert record.span_id.hex() == result["span_id"]
-        assert "server_span_id" not in result
-        assert "current_span_id" not in result
-        assert "server_span_id" not in json.loads(result["message"])
-        assert "current_span_id" not in json.loads(result["message"])
+        assert "observed_at" not in result
+        assert "occurrence_id" not in result
+        assert "event_id" not in result
+        assert "message" not in result
+        assert record.time_unix_nano == log_binding.event_time(
+            event["observed_at"]
+        )
+        attributes = {a.key: a.value.string_value for a in record.attributes}
+        assert attributes == log_binding.attributes(event)
+        assert result == log_binding.payload(event)
+        assert "\n" not in record.body.string_value
+        assert "\r" not in record.body.string_value
+        assert record.body.string_value == json.dumps(
+            result, ensure_ascii=False, separators=(",", ":")
+        )
+        assert record.ByteSize() <= log_binding.record_size(
+            record.body.string_value.encode(), event
+        )
         assert result["instance_id"] == event["instance_id"]
-        assert record.trace_id.hex() == event["trace_id"]
-        assert {a.key: a.value.string_value for a in record.attributes}[
-            "source"
-        ] == "beacon_security"
+        if "trace_id" in event:
+            assert record.trace_id.hex() == event["trace_id"]
+            assert record.span_id.hex() == event["span_id"]
+        else:
+            assert not record.trace_id and not record.span_id
+
     finally:
         exporter.close()
         provider.shutdown()
@@ -258,9 +302,8 @@ def test_truncated_v2_is_preserved_without_second_truncation(
         exporter.emit(event)
         assert exporter.flush(5)
         assert len(logged) == 1
-        envelope = json.loads(logged[0])
-        VALIDATOR.validate(envelope)
-        body = json.loads(envelope["message"])
+        body = json.loads(logged[0])
+        VALIDATOR.validate(body)
         assert body["truncated"] is True
         assert body["evidence_sampled"] is False
         assert body["truncation_reason"] == "record_byte_limit"
@@ -310,10 +353,6 @@ def test_missing_span_does_not_fabricate_export_field(
         assert "span_id" not in body
         assert "server_span_id" not in body
         assert "current_span_id" not in body
-        payload = json.loads(body["message"])
-        assert "span_id" not in payload
-        assert "server_span_id" not in payload
-        assert "current_span_id" not in payload
     finally:
         exporter.close()
 
@@ -323,7 +362,162 @@ def test_schema_requires_process_identity(vector: dict[str, Any]) -> None:
     event = json.loads(
         (FIXTURES / vector["expected"]).read_text(encoding="utf-8")
     )
-    VALIDATOR.validate(event)
+    SIEM_VALIDATOR.validate(event)
     del event["instance_id"]
     with pytest.raises(ValidationError, match="instance_id"):
-        VALIDATOR.validate(event)
+        SIEM_VALIDATOR.validate(event)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "finding",
+        "finding-occurrence",
+        "sbom-empty",
+        "sbom-inventory",
+        "sbom-part-0",
+        "sbom-part-1",
+    ],
+)
+def test_shared_log_binding_vectors(name: str) -> None:
+    expected = json.loads(
+        (FIXTURES / "examples/log-records" / f"{name}.json").read_text()
+    )
+    if name in ("finding", "finding-occurrence"):
+        source = (
+            "finding-v2.json"
+            if name == "finding"
+            else "finding-occurrence-v2.json"
+        )
+        event = json.loads((FIXTURES / "examples" / source).read_text())
+    elif name == "sbom-inventory":
+        event = json.loads(
+            (FIXTURES / "examples/sbom-inventory-v2.json").read_text()
+        )
+    else:
+        event = json.loads(
+            (FIXTURES / "examples/siem/inputs" / f"{name}.json").read_text()
+        )
+    encoded = log_binding.encode(event)
+    assert encoded.decode() == expected["body"]
+    assert (
+        str(log_binding.event_time(event["observed_at"]))
+        == expected["time_unix_nano"]
+    )
+    assert log_binding.attributes(event) == expected["attributes"]
+    VALIDATOR.validate(json.loads(encoded))
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("2026-10-02T00:00:00.000Z", 1790899200000000000),
+        ("2026-10-02T00:00:00.123456789Z", 1790899200123456789),
+        ("1970-01-01T00:00:00.000000001Z", 1),
+        ("2262-04-11T23:47:16.854775807Z", 9223372036854775807),
+    ],
+)
+def test_exact_event_time(value: str, expected: int) -> None:
+    assert log_binding.event_time(value) == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "",
+        "invalid",
+        "2026-02-30T00:00:00Z",
+        "2026-10-02T00:00:00.1234567890Z",
+        "1970-01-01T00:00:00Z",
+        "1969-12-31T23:59:59Z",
+        "2262-04-11T23:47:16.854775808Z",
+    ],
+)
+def test_invalid_event_time(value: str) -> None:
+    with pytest.raises(ValueError):
+        log_binding.event_time(value)
+
+
+def test_compact_body_preserves_nested_unicode_and_values() -> None:
+    event = json.loads((FIXTURES / "examples/finding-v2.json").read_text())
+    event["attack_evidence"]["reason"] = '中文 "quoted"\nline\rnext'
+    original = json.loads(json.dumps(event))
+    encoded = log_binding.encode(event)
+    assert b"\n" not in encoded and b"\r" not in encoded
+    assert json.loads(encoded) == {
+        key: value
+        for key, value in original.items()
+        if key not in ("observed_at", "occurrence_id")
+    }
+    assert event == original
+    assert log_binding.encode(event) == encoded
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    ["bad-time", "1970-01-01T00:00:00Z", "2262-04-11T23:47:16.854775808Z"],
+)
+def test_invalid_time_fails_export_without_file_or_otel(
+    invalid: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("BEACON_SECURITY_EXPORT_NO_EVIDENCE_ENABLED", "true")
+    monkeypatch.setenv(
+        "BEACON_SECURITY_EVIDENCE_FILE", str(tmp_path / "events.jsonl")
+    )
+    event = json.loads((FIXTURES / "examples/finding-v2.json").read_text())
+    event["observed_at"] = invalid
+    emitted = []
+    exporter = Exporter(IDENTITY, "invalid-time", tmp_path)
+    monkeypatch.setattr(
+        exporter, "_emit_otel", lambda *args: emitted.append(args)
+    )
+    try:
+        exporter.emit(event, evidence=True)
+        assert exporter.flush(5)
+        assert not emitted
+        assert not (tmp_path / "events.jsonl").exists()
+        assert exporter.delivery()["counters"]["security.failed"] == 1
+    finally:
+        exporter.close()
+
+
+def test_retransmission_retains_metadata_after_queue_delay(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from opentelemetry.sdk._logs import LoggerProvider
+    from opentelemetry.sdk._logs.export import (
+        InMemoryLogRecordExporter,
+        SimpleLogRecordProcessor,
+    )
+
+    event = json.loads(
+        (FIXTURES / "examples/sbom-inventory-v2.json").read_text()
+    )
+    logs = InMemoryLogRecordExporter()
+    provider = LoggerProvider()
+    provider.add_log_record_processor(SimpleLogRecordProcessor(logs))
+    exporter = Exporter(IDENTITY, "retry", tmp_path)
+    exporter._otel_logger = provider.get_logger("io.beacon.security")
+    try:
+        exporter.emit(event)
+        assert exporter.flush(5)
+        monkeypatch.setattr("beacon_security.exporter.time.time_ns", lambda: 1)
+        exporter.emit(event)
+        assert exporter.flush(5)
+        records = [row.log_record for row in logs.get_finished_logs()]
+        assert len(records) == 2
+        assert (
+            records[0].timestamp
+            == records[1].timestamp
+            == log_binding.event_time(event["observed_at"])
+        )
+        assert (
+            records[0].attributes
+            == records[1].attributes
+            == log_binding.attributes(event)
+        )
+        assert records[0].body == records[1].body
+        VALIDATOR.validate(json.loads(records[0].body))
+    finally:
+        exporter.close()
+        provider.shutdown()

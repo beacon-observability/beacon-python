@@ -146,9 +146,10 @@ class SecurityProvenanceTest(unittest.TestCase):
 
     def test_rejects_modified_schema_artifacts(self) -> None:
         paths = (
-            "beacon-otel/src/beacon_security/siem-v1.schema.json",
+            "beacon-otel/tests/security/fixtures/spec/beacon-security-log-record-v1.schema.json",
+            "beacon-otel/src/beacon_security/log-body-v1.schema.json",
             "beacon-otel/src/beacon_security/evidence.schema.json",
-            "beacon-otel/tests/security/fixtures/spec/beacon-security-siem-v1.schema.json",
+            "beacon-otel/tests/security/fixtures/spec/beacon-security-log-body-v1.schema.json",
             "beacon-otel/tests/security/fixtures/spec/beacon-security-event-v2.schema.json",
         )
         for changed in paths:
